@@ -1,0 +1,26 @@
+name: Native armv7 probe
+on:
+  push:
+    branches: [legacy-armv7-native-probe]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 5
+    steps:
+      - name: Report CPU and kernel
+        run: |
+          uname -a
+          lscpu
+      - name: Require native armv7 execution
+        run: |
+          if test -e /proc/sys/fs/binfmt_misc/qemu-arm; then
+            echo "::error::qemu-arm is registered; this would not establish native execution"
+            exit 1
+          fi
+          docker run --rm --platform linux/arm/v7 alpine:edge sh -ec '
+            test "$(apk --print-arch)" = armv7
+            test "$(getconf LONG_BIT)" = 32
+            echo "Native armv7 userspace works"
+          '
