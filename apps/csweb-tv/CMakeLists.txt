@@ -19,14 +19,22 @@ get_filename_component(_csweb_root "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
 # The kit remains pinned and unmodified. Only the legacy SDL source build gets
 # this third-party guard, after the kit's own SDL patch and before configure.
 if (CSWEB_LEGACY AND WNK_WEBOS)
-    find_package(Python3 REQUIRED COMPONENTS Interpreter)
-    ExternalProject_Get_Property(wnk_sdl_webos_ext SOURCE_DIR)
-    ExternalProject_Add_Step(wnk_sdl_webos_ext csweb_legacy_foreign_guard
-        COMMAND "${Python3_EXECUTABLE}" "${_csweb_root}/tools/patch-legacy-sdl.py" "${SOURCE_DIR}"
-        DEPENDEES patch
-        DEPENDERS configure
-        DEPENDS "${_csweb_root}/tools/patch-legacy-sdl.py"
-        COMMENT "Guard legacy SDL video export when wl_webos_foreign is unavailable")
+    set_property(TARGET wnk_sdl_webos_ext PROPERTY CSWEB_LEGACY_GUARD_SCRIPT
+        "${_csweb_root}/tools/patch-legacy-sdl.py")
+    function(csweb_legacy_guard_sdl)
+        find_package(Python3 REQUIRED COMPONENTS Interpreter)
+        ExternalProject_Get_Property(wnk_sdl_webos_ext SOURCE_DIR)
+        get_property(_guard TARGET wnk_sdl_webos_ext PROPERTY CSWEB_LEGACY_GUARD_SCRIPT)
+        ExternalProject_Add_Step(wnk_sdl_webos_ext csweb_legacy_foreign_guard
+            COMMAND "${Python3_EXECUTABLE}" "${_guard}" "${SOURCE_DIR}"
+            DEPENDEES patch
+            DEPENDERS configure
+            DEPENDS "${_guard}"
+            COMMENT "Guard legacy SDL video export when wl_webos_foreign is unavailable")
+    endfunction()
+    # ExternalProject's stamp commands belong to the kit's root directory.
+    # Adding the step from this app subdirectory cannot append to those commands.
+    cmake_language(DEFER DIRECTORY "${PROJECT_SOURCE_DIR}" CALL csweb_legacy_guard_sdl)
 endif ()
 
 # ---- csweb_core: no UI; runtime client, plugins, persistence, utilities ---------------------------

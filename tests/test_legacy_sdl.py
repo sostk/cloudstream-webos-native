@@ -15,6 +15,51 @@ SPEC.loader.exec_module(PATCH)
 
 
 class LegacySdlTest(unittest.TestCase):
+    @unittest.skipUnless(shutil.which("cmake"), "CMake required for build-hook integration")
+    def test_external_project_hook_runs_from_root_and_is_legacy_webos_only(self):
+        cmake = (ROOT / "apps/csweb-tv/CMakeLists.txt").read_text()
+        start = cmake.index("# The kit remains pinned and unmodified.")
+        end = cmake.index("# ---- csweb_core", start)
+        hook = cmake[start:end]
+        with tempfile.TemporaryDirectory() as directory:
+            for name, legacy, webos in (("legacy", "ON", "ON"), ("main", "OFF", "ON"),
+                                        ("host", "ON", "OFF")):
+                root = pathlib.Path(directory) / name
+                app = root / "repo/apps/csweb-tv"
+                app.mkdir(parents=True)
+                (app / "CMakeLists.txt").write_text(
+                    'get_filename_component(_csweb_root "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)\n' + hook)
+                (root / "repo/tools").mkdir()
+                shutil.copyfile(ROOT / "tools/patch-legacy-sdl.py", root / "repo/tools/patch-legacy-sdl.py")
+                sdl = root / "sdl/src/video/wayland"
+                sdl.mkdir(parents=True)
+                target = sdl / "SDL_waylandwebos_foreign.c"
+                shutil.copyfile(ROOT / "tests/fixtures/sdl-exported-window.c", target)
+                # This configure command fails if the legacy patch has not run first.
+                check = root / "check.cmake"
+                check.write_text('file(READ "${SOURCE}" text)\n'
+                                 'if(LEGACY AND NOT text MATCHES "CSWeb legacy addition")\n'
+                                 'message(FATAL_ERROR "SDL configure ran before the guard")\nendif()\n')
+                (root / "CMakeLists.txt").write_text('''cmake_minimum_required(VERSION 3.22)
+project(GuardHook NONE)
+include(ExternalProject)
+option(CSWEB_LEGACY "legacy" OFF)
+option(WNK_WEBOS "webos" OFF)
+ExternalProject_Add(wnk_sdl_webos_ext
+ SOURCE_DIR "${PROJECT_SOURCE_DIR}/sdl"
+ DOWNLOAD_COMMAND "" UPDATE_COMMAND "" PATCH_COMMAND ""
+ CONFIGURE_COMMAND "${CMAKE_COMMAND}" "-DSOURCE=${PROJECT_SOURCE_DIR}/sdl/src/video/wayland/SDL_waylandwebos_foreign.c"
+ "-DLEGACY=${CSWEB_LEGACY}" -P "${PROJECT_SOURCE_DIR}/check.cmake"
+ BUILD_COMMAND "" INSTALL_COMMAND "")
+add_subdirectory(repo/apps/csweb-tv)
+'''.replace('"-DLEGACY=${CSWEB_LEGACY}"', '"-DLEGACY=' + ("ON" if name == "legacy" else "OFF") + '"'))
+                for command in (["cmake", "-S", str(root), "-B", str(root / "build"),
+                                 "-DCSWEB_LEGACY=" + legacy, "-DWNK_WEBOS=" + webos],
+                                ["cmake", "--build", str(root / "build"), "--target", "wnk_sdl_webos_ext"]):
+                    result = subprocess.run(command, capture_output=True, text=True)
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual(PATCH.GUARD in target.read_text(), name == "legacy")
+
     def test_patch_is_idempotent_and_rejects_changed_sources(self):
         source = (ROOT / "tests/fixtures/sdl-exported-window.c").read_text()
         patched = PATCH.patch_text(source)

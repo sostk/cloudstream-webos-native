@@ -38,6 +38,9 @@ The app's CMake registers an extra SDL ExternalProject step only when both
 before SDL configure, `tools/patch-legacy-sdl.py` checks for the pinned source anchor
 and adds a missing-protocol/table guard. It changes SDL's generated source checkout;
 no kit source, kit pin, ART package, runtime inputs or main SDL configuration changes.
+The hook is deferred to the kit's root CMake directory, where SDL's ExternalProject
+stamp commands are defined. Registering it directly from the app subdirectory
+failed at generation in run 39885909950; that build-hook error is corrected.
 
 Missing protocol state now returns NULL with an SDL error before allocating or
 touching the exported-window list. The kit's existing NULL-window handling logs a
@@ -60,6 +63,10 @@ a minimal compositor environment. It reproduces SIGSEGV when the table is missin
 The guarded function returns an error for missing driver data, protocol, table or
 both, and still creates an exported window when both are present. The test also
 checks fail-closed anchors and repeat application.
+An additional CMake integration test builds a minimal root ExternalProject with
+the actual app hook, checks the guard runs before configure, and verifies the
+main and host modes leave SDL unchanged. It runs where CMake is available (CI);
+this local environment lacks CMake, so only that integration test is skipped locally.
 
 After installing the updated legacy package, test one video and collect events.log,
 runtime.log and a fresh crash.log if generated. Check for the exported-window warning
