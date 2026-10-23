@@ -19,7 +19,7 @@ typedef struct SDL_Window { void *driverdata; unsigned flags; struct SDL_Window 
 typedef struct { void *driverdata; SDL_Window *windows; void *webos_foreign_lock; } SDL_VideoDevice;
 #define _THIS SDL_VideoDevice *_this
 #define SDL_WINDOW_OPENGL 2
-#define SDL_WEBOS_EXPORTED_WINDOW_TYPE_OPAQUE 2
+#define SDL_WEBOS_EXPORTED_WINDOW_TYPE_OPAQUE 3
 #define SDL_LOG_CATEGORY_VIDEO 0
 static char error_text[256];
 static int allocations, lock_depth, exports;

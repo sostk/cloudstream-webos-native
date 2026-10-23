@@ -40,7 +40,7 @@ class LegacySdlTest(unittest.TestCase):
                 self.assertEqual(built.returncode, 0, built.stderr)
                 if label == "original":
                     # Reproduce the unsafe access with the original upstream function.
-                    failed = subprocess.run([str(exe), "missing-table"], capture_output=True)
+                    failed = subprocess.run([str(exe), "missing-table"], capture_output=True, cwd=root)
                     self.assertEqual(failed.returncode, -signal.SIGSEGV)
                 else:
                     for case in ("missing-table", "missing-protocol", "missing-both",

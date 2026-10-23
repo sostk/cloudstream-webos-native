@@ -19,7 +19,17 @@ The kit is pinned at `5b07b2df724e414b9efed9c46ed18df6e4f647b3` and builds SDL
 `webos_foreign_table` only when its Wayland registry sees `wl_webos_foreign`,
 but `WaylandWebOS_CreateExportedWindow` dereferences that table without checking it.
 The table's windows pointer is at offset 4 on ARM32. This is consistent with the
-recorded null access; the exact packaged instruction is being checked separately.
+recorded null access. CI analysis run 39885245483 downloaded artifact 12456526352
+from run 39847551314 and confirmed the executable's build ID matches the crash record.
+SDL's executable LOAD segment has virtual address zero. The fault is exactly:
+
+```text
+de460: e596208c  ldr r2, [r6, #140]  ; data->webos_foreign_table
+de464: e5923004  ldr r3, [r2, #4]    ; table->windows; NULL + 4
+```
+
+The preceding allocation and list code match the pinned SDL create function.
+This confirms a missing table, rather than an ART, extractor or curl crash.
 
 ## Legacy-only guard
 
@@ -35,6 +45,13 @@ warning and constructs the Starfish payload without a windowId. The guard is not
 claim that the older firmware can display video without an exported window.
 That fallback still requires a TV test; any subsequent failure must be read from
 the new logs.
+
+Kodi's MediaPipelineWebOS checks SupportsExportedWindow and, when false, uses
+AcbAPI_initialize; RendererStarfish uses AcbAPI_setCustomDisplayWindow on that path.
+That is evidence of a separate legacy display-control mechanism, not proof that
+omitting windowId alone suffices. If the crash guard exposes a black video plane,
+inspect the TV's ACB API before implementing a bridge; do not guess its ABI or
+claim full playback from the guard tests.
 
 ## Validation and next TV test
 
