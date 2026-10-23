@@ -92,6 +92,22 @@ SettingsScreen::SettingsScreen(app::Services &s) : Screen("Settings"), s_(s) {
         c.set_description("Highest resolution picked from adaptive streams");
         c.name = "settings.quality";
     }
+    list.add<Toggle>("Prefer Dolby Vision", settings::prefer_dolby_vision(*st), [st](Ui &, bool on) {
+        st->set(settings::kPreferDolbyVision, on);
+    }).set_description(s_.device.dolby_vision == true
+                           ? "Prioritize Dolby Vision streams (supported by this TV)"
+                           : (s_.device.dolby_vision == false
+                                  ? "Prioritize Dolby Vision streams (not supported by this TV display)"
+                                  : "Prioritize Dolby Vision streams when available"))
+      .name = "settings.dolby_vision";
+    list.add<Toggle>("Prefer Dolby Atmos", settings::prefer_dolby_atmos(*st), [st](Ui &, bool on) {
+        st->set(settings::kPreferDolbyAtmos, on);
+    }).set_description(s_.device.dolby_atmos == true
+                           ? "Enable immersive audio pass-through (supported by this TV)"
+                           : (s_.device.dolby_atmos == false
+                                  ? "Enable immersive audio pass-through (not supported by this TV)"
+                                  : "Enable immersive audio pass-through when available"))
+      .name = "settings.dolby_atmos";
     list.add<Toggle>("Autoplay next episode", st->get_bool(settings::kAutoplayNext, true), [st](Ui &, bool on) {
         st->set(settings::kAutoplayNext, on);
     }).name = "settings.autoplay";

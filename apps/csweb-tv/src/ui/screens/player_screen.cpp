@@ -83,8 +83,11 @@ PlayerScreen::PlayerScreen(app::Services &s, app::PlayTarget target)
     auto &top = bar_->add<wnk::ui::Row>(24);
     auto &titles = top.add<Column>(6);
     titles.set_width(Dim::fill());
-    title_ = &titles.add<Label>(target_.title, TextRole::Title);
+    auto &title_row = titles.add<wnk::ui::Row>(14);
+    title_ = &title_row.add<Label>(target_.title, TextRole::Title);
     title_->set_bold(true);
+    bar_badge_row_ = &title_row.add<wnk::ui::Row>(8);
+    bar_badge_row_->set_align(Align::Start, Align::Center);
     auto &sub = titles.add<Label>(target_.subtitle);
     sub.set_color(theme::kTextSecondary);
     sub.set_visible(!target_.subtitle.empty());
@@ -127,6 +130,17 @@ PlayerScreen::PlayerScreen(app::Services &s, app::PlayTarget target)
     spinner_ = &add<Spinner>(96);
     spinner_->set_align(Align::Center, Align::Center);
     spinner_->set_visible(false);
+
+    // Starter HUD: shown at top-right on video start and with controls
+    starter_hud_ = &add<wnk::ui::Row>();
+    starter_hud_->set_width(Dim::fill());
+    starter_hud_->set_align(Align::Stretch, Align::Start);
+    starter_hud_->set_padding({theme::kSafeX, 48, theme::kSafeX, 0});
+    starter_badge_row_ = &starter_hud_->add<wnk::ui::Row>(10);
+    starter_badge_row_->set_align(Align::End, Align::Start);
+    starter_badge_row_->set_padding({14, 8, 14, 8});
+    starter_badge_row_->set_background(theme::Color::hex(0x0C0F17CC), 10.0f);
+    starter_hud_->set_visible(false);
 
     // Loading overlay (CloudStream's link loading screen, with Skip loading).
     auto &loading = add<Column>(26);
@@ -202,10 +216,11 @@ void PlayerScreen::load_links() {
 void PlayerScreen::links_changed() {
     size_t usable = 0;
     bool auto_skip = false;
+    const auto prefs = link_preferences();
     for (const auto &l : links_) {
         if (!player::playable(l)) continue;
         ++usable;
-        if (player::link_priority(l) >= player::kAutoSkipPriority) auto_skip = true;
+        if (player::link_priority(l, prefs) >= player::kAutoSkipPriority) auto_skip = true;
     }
     loading_text_->set_text(links_.empty() ? "Loading links…" : "Loading links… " + std::to_string(links_.size()) + " found");
     if (usable > 0) {
@@ -223,7 +238,7 @@ void PlayerScreen::links_changed() {
 
 void PlayerScreen::start_best(Ui &ui) {
     if (started_) return;
-    for (size_t i : player::sort_links(links_)) {
+    for (size_t i : player::sort_links(links_, link_preferences())) {
         if (player::playable(links_[i]) && !errored_.count(i)) {
             started_ = true;
             play_link(ui, i);
@@ -248,11 +263,16 @@ void PlayerScreen::stop_playback() {
         controller_.reset();
     }
     if (screen_on_.held()) screen_on_.release();
+    if (starter_hud_) starter_hud_->set_visible(false);
+    playback_start_ms_ = 0;
+    detected_quality_ = {};
 }
 
 void PlayerScreen::play_link(Ui &ui, size_t index) {
     stop_playback();
     current_ = index;
+    playback_start_ms_ = 0;
+    populate_quality_badges(links_[index], nullptr);
     const runtime::Link &link = links_[index];
     WNK_LOGI(kCat, "playing link %zu: %s %s (%s)", index, link.name.c_str(), runtime::quality_label(link.quality).c_str(),
              player::is_adaptive(link) ? "adaptive" : "ffmpeg");
@@ -262,7 +282,8 @@ void PlayerScreen::play_link(Ui &ui, size_t index) {
     source_->set_text(link_label(link));
     ui.set_clear_color(wnk::render::kTransparent);
     auto http = s_.player_http ? s_.player_http : s_.ctx->http();
-    controller_ = std::make_unique<PlaybackController>(player::make_source(link, http, s_.device, settings::preferred_max_height(*s_.settings)),
+    controller_ = std::make_unique<PlaybackController>(player::make_source(link, http, s_.device,
+                                                                           settings::preferred_max_height(*s_.settings)),
                                                        player::make_backend(s_.device),
                                                        s_.ctx->dispatcher(), PlaybackOptions{});
     controller_->set_state_callback(core::guarded(life_.weak(), [this](PlayState from, PlayState to, const PlaybackSnapshot &snap) {
@@ -270,6 +291,8 @@ void PlayerScreen::play_link(Ui &ui, size_t index) {
         WNK_LOGI(kCat, "player %s -> %s%s%s", play_state_name(from), play_state_name(to), error.empty() ? "" : ": ",
                  error.c_str());
         if (to == PlayState::Ready) {
+            if (playback_start_ms_ == 0 && this->ui()) playback_start_ms_ = this->ui()->now_ms();
+            if (current_ < links_.size()) populate_quality_badges(links_[current_], &snap);
             controller_->set_video_area({0, 0, 1920, 1080});
             // GeneratorPlayer.getPos: continue where the viewer stopped (not past 95 %).
             if (!resumed_) {
@@ -310,7 +333,7 @@ void PlayerScreen::play_link(Ui &ui, size_t index) {
 
 void PlayerScreen::next_mirror(Ui &ui) {
     // GeneratorPlayer.getNextLink: the next link after the current one in sorted order.
-    const auto order = player::sort_links(links_);
+    const auto order = player::sort_links(links_, link_preferences());
     auto it = std::find(order.begin(), order.end(), current_);
     for (++it; it < order.end(); ++it) {
         if (player::playable(links_[*it]) && !errored_.count(*it)) {
@@ -321,11 +344,89 @@ void PlayerScreen::next_mirror(Ui &ui) {
     no_links("No more links to try");
 }
 
+player::LinkPreferences PlayerScreen::link_preferences() const {
+    player::LinkPreferences p;
+    p.prefer_dolby_vision = settings::prefer_dolby_vision(*s_.settings);
+    p.prefer_dolby_atmos = settings::prefer_dolby_atmos(*s_.settings);
+    p.device_dolby_vision = (s_.device.dolby_vision == true);
+    p.device_dolby_atmos = (s_.device.dolby_atmos == true);
+    return p;
+}
+
 std::string PlayerScreen::link_label(const runtime::Link &l) const {
     std::string label = l.name.empty() ? l.source : l.name;
-    const std::string q = runtime::quality_label(l.quality);
+    std::string q = runtime::quality_label(l.quality);
+    if (q.empty()) {
+        if (player::is_4k(l)) q = "4K";
+        else if (player::is_1080p(l)) q = "1080p";
+        else if (player::is_720p(l)) q = "720p";
+    }
     if (!q.empty()) label += "  ·  " + q;
+    if (player::is_dolby_vision(l)) label += "  ·  DV";
+    if (player::is_dolby_atmos(l)) label += "  ·  Atmos";
     return label;
+}
+
+void PlayerScreen::populate_quality_badges(const runtime::Link &link, const wnk::media::PlaybackSnapshot *snap) {
+    bool has_stream_metadata = false;
+    int stream_width = 0, stream_height = 0, dv_profile = -1, transfer = 0;
+    bool atmos = false;
+    if (snap && snap->state >= PlayState::Ready) {
+        if (snap->format.video) {
+            stream_width = snap->format.video->width;
+            stream_height = snap->format.video->height;
+            dv_profile = snap->format.video->dolby_vision_profile;
+            transfer = snap->format.video->colour.transfer;
+            has_stream_metadata = true;
+        }
+        if (stream_width <= 0 || stream_height <= 0) {
+            if (const auto *vt = snap->info.best(wnk::media::TrackType::Video)) {
+                stream_width = vt->width;
+                stream_height = vt->height;
+                has_stream_metadata = true;
+            }
+        }
+        if (snap->format.audio) {
+            atmos = snap->format.audio->atmos;
+            has_stream_metadata = true;
+        }
+    }
+    auto info = player::detect_quality_info(link, has_stream_metadata, stream_width, stream_height, dv_profile, transfer, atmos);
+    if (info.resolution == detected_quality_.resolution &&
+        info.dolby_vision == detected_quality_.dolby_vision &&
+        info.hdr == detected_quality_.hdr &&
+        info.dolby_atmos == detected_quality_.dolby_atmos &&
+        starter_badge_row_ && !starter_badge_row_->children().empty()) {
+        return;
+    }
+    detected_quality_ = info;
+
+    auto populate = [&info](wnk::ui::Row *row, float font_size) {
+        if (!row) return;
+        row->clear_children();
+        if (!info.resolution.empty()) {
+            auto kind = info.is_4k ? QualityBadge::Kind::Quality4K
+                      : info.is_1080p ? QualityBadge::Kind::Quality1080p
+                      : info.is_720p ? QualityBadge::Kind::Quality720p
+                      : QualityBadge::Kind::QualityGeneric;
+            row->add<QualityBadge>(info.resolution, kind, font_size);
+        }
+        if (info.dolby_vision) {
+            row->add<QualityBadge>("VISION", QualityBadge::Kind::DolbyVision, font_size * 0.9f);
+        } else if (info.hdr) {
+            row->add<QualityBadge>("HDR", QualityBadge::Kind::Hdr, font_size * 0.9f);
+        }
+        if (info.dolby_atmos) {
+            row->add<QualityBadge>("ATMOS", QualityBadge::Kind::DolbyAtmos, font_size * 0.9f);
+        }
+    };
+
+    populate(starter_badge_row_, 24.0f);
+    populate(bar_badge_row_, 20.0f);
+
+    const bool has_any = !info.resolution.empty() || info.dolby_vision || info.hdr || info.dolby_atmos;
+    if (starter_hud_) starter_hud_->set_visible(has_any);
+    if (bar_badge_row_) bar_badge_row_->set_visible(has_any);
 }
 
 void PlayerScreen::show_controls() {
@@ -385,9 +486,15 @@ void PlayerScreen::update(Ui &ui, float dt) {
     const PlaybackSnapshot s = controller_->snapshot();
     position_us_ = s.position_us;
     if (s.duration_us > 0) duration_us_ = s.duration_us;
-    if (s.state == PlayState::Playing && ui.now_ms() - last_save_ms_ > 10000) {
-        last_save_ms_ = ui.now_ms();
-        save_position();
+    if (s.state == PlayState::Playing) {
+        if (playback_start_ms_ == 0) playback_start_ms_ = ui.now_ms();
+        if (ui.now_ms() - last_save_ms_ > 10000) {
+            last_save_ms_ = ui.now_ms();
+            save_position();
+        }
+    }
+    if (current_ < links_.size() && (detected_quality_.resolution.empty() || (s.format.video && s.format.video->width > 0))) {
+        populate_quality_badges(links_[current_], &s);
     }
     const bool busy = s.state == PlayState::Opening || s.state == PlayState::Seeking || s.buffering;
     if (busy || s.state == PlayState::Playing) {
@@ -405,6 +512,23 @@ void PlayerScreen::update(Ui &ui, float dt) {
     const bool visible = keep || ui.now_ms() - last_input_ms_ < 5000;
     bar_->set_opacity(visible ? 1.0f : 0.0f);
     subs_view_->set_bottom_margin(visible ? 0.34f : 0.07f);
+
+    if (starter_hud_ && starter_hud_->visible()) {
+        if (playback_start_ms_ > 0) {
+            const double elapsed = ui.now_ms() - playback_start_ms_;
+            if (elapsed < 4000) {
+                starter_hud_->set_opacity(1.0f);
+            } else if (elapsed < 5000) {
+                const float fade = static_cast<float>(1.0 - (elapsed - 4000) / 1000.0);
+                starter_hud_->set_opacity(std::clamp(fade, 0.0f, 1.0f));
+            } else {
+                const bool controls_shown = bar_->opacity() > 0.5f;
+                starter_hud_->set_opacity(controls_shown ? 0.9f : 0.0f);
+            }
+        } else {
+            starter_hud_->set_opacity(1.0f);
+        }
+    }
 }
 
 void PlayerScreen::open_sources(Ui &ui) {
@@ -414,7 +538,7 @@ void PlayerScreen::open_sources(Ui &ui) {
     scroll.set_height(Dim::fixed(560));
     auto &list = scroll.add<Column>(8);
     View *current = nullptr;
-    for (size_t i : player::sort_links(links_)) {
+    for (size_t i : player::sort_links(links_, link_preferences())) {
         const auto &l = links_[i];
         std::string text = link_label(l);
         if (!player::playable(l)) text += "  ·  not supported (" + player::unsupported_reason(l) + ")";

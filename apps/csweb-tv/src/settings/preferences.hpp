@@ -37,6 +37,8 @@ inline constexpr const char *kShowCast = "show_cast_in_details_key";
 inline constexpr const char *kSubtitleLang = "subs_auto_select";
 inline constexpr const char *kSubtitleSize = "csweb_subtitle_size";  // percent of the default size
 inline constexpr const char *kSubtitleBox = "csweb_subtitle_box";    // dark box instead of an outline
+inline constexpr const char *kPreferDolbyVision = "csweb_prefer_dolby_vision";  // prioritize Dolby Vision streams
+inline constexpr const char *kPreferDolbyAtmos = "csweb_prefer_dolby_atmos";    // prioritize Dolby Atmos streams
 
 // TvType names in CloudStream's declaration order (the index is the ordinal).
 const std::vector<std::string> &tv_types();
@@ -86,6 +88,8 @@ std::set<std::string> default_chip_types();
 // Preferred quality: highest video height, 2160 by default (Qualities.P2160).
 const std::vector<int> &quality_choices();  // 2160 … 144, as CloudStream lists them
 int preferred_max_height(const SettingsStore &s);
+bool prefer_dolby_vision(const SettingsStore &s);
+bool prefer_dolby_atmos(const SettingsStore &s);
 
 // Subtitle languages offered for auto-select: IETF tag and English name. The first entry is "None" ("").
 struct Language {

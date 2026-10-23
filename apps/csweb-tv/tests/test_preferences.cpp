@@ -44,6 +44,8 @@ TEST("defaults_without_stored_settings") {
     CHECK(f.media.count("NSFW") == 0);
     CHECK(f.media.count("Others") == 1);
     CHECK_EQ(preferred_max_height(s), 2160);
+    CHECK(prefer_dolby_vision(s) == true);
+    CHECK(prefer_dolby_atmos(s) == true);
     CHECK_EQ(subtitle_language(s), std::string("en"));
     CHECK(get_set(s, kSearchTypes, default_chip_types()) == (std::set<std::string>{"Movie", "TvSeries"}));
 }
@@ -60,6 +62,19 @@ TEST("stored_filters_are_ordinals_and_tags") {
     CHECK(read_filters(s).media.empty());  // nothing preferred: no media filter on Home
     put_set(s, kProviderLangs, {});
     CHECK(read_filters(s).langs == std::set<std::string>{"universal"});
+}
+
+TEST("dolby_preferences_stored") {
+    wnk::async::WorkerPool pool(1);
+    SettingsStore s(nullptr, pool);
+    s.set(kPreferDolbyVision, false);
+    s.set(kPreferDolbyAtmos, false);
+    CHECK(prefer_dolby_vision(s) == false);
+    CHECK(prefer_dolby_atmos(s) == false);
+    s.set(kPreferDolbyVision, true);
+    s.set(kPreferDolbyAtmos, true);
+    CHECK(prefer_dolby_vision(s) == true);
+    CHECK(prefer_dolby_atmos(s) == true);
 }
 
 TEST("preferred_providers_filter_language_home_and_media") {

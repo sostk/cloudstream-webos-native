@@ -18,8 +18,10 @@
 #pragma once
 
 #include "app/router.hpp"
+#include "player/link_priority.hpp"
 #include "player/subtitle_file.hpp"
 #include "runtime/runtime_types.hpp"
+#include "ui/widgets/quality_badge.hpp"
 
 #include "wnk/app/wake_lock.hpp"
 #include "wnk/media/controller.hpp"
@@ -73,6 +75,8 @@ class PlayerScreen : public wnk::ui::Screen {
     void play_episode(wnk::ui::Ui &ui, size_t index);
     void open_episodes(wnk::ui::Ui &ui);
     std::string link_label(const runtime::Link &l) const;
+    player::LinkPreferences link_preferences() const;
+    void populate_quality_badges(const runtime::Link &link, const wnk::media::PlaybackSnapshot *snap = nullptr);
 
     app::Services &s_;
     app::PlayTarget target_;
@@ -109,10 +113,17 @@ class PlayerScreen : public wnk::ui::Screen {
     wnk::media::SubtitleView *subs_view_ = nullptr;
     wnk::ui::Column *bar_ = nullptr;
     wnk::ui::Label *title_ = nullptr, *status_ = nullptr, *time_ = nullptr, *source_ = nullptr;
+    wnk::ui::Row *bar_badge_row_ = nullptr;
     wnk::ui::ProgressBar *progress_ = nullptr;
     PillButton *pause_ = nullptr;
     wnk::ui::Spinner *spinner_ = nullptr;
     double last_input_ms_ = 0;
+
+    // Starter HUD (shown at video start and with controls)
+    wnk::ui::Row *starter_hud_ = nullptr;
+    wnk::ui::Row *starter_badge_row_ = nullptr;
+    double playback_start_ms_ = 0;
+    player::VideoQualityInfo detected_quality_;
     wnk::async::Lifetime life_;
 };
 

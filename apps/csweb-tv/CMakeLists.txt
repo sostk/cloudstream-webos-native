@@ -118,6 +118,7 @@ add_executable(csweb-tv
         src/ui/widgets/pill_button.cpp
         src/ui/widgets/pin_pad.cpp
         src/ui/widgets/profile_avatar.cpp
+        src/ui/widgets/quality_badge.cpp
         src/ui/widgets/top_bar.cpp
         src/ui/widgets/type_chips.cpp)
 target_link_libraries(csweb-tv PRIVATE csweb_core csweb_player wnk_app wnk_media_ui)

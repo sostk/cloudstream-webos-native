@@ -249,6 +249,14 @@ int preferred_max_height(const SettingsStore &s) {
     return h > 0 && h <= 100000 ? static_cast<int>(h) : 2160;
 }
 
+bool prefer_dolby_vision(const SettingsStore &s) {
+    return s.get_bool(kPreferDolbyVision, true);
+}
+
+bool prefer_dolby_atmos(const SettingsStore &s) {
+    return s.get_bool(kPreferDolbyAtmos, true);
+}
+
 const std::vector<Language> &subtitle_languages() {
     static const std::vector<Language> v = [] {
         std::vector<Language> out = {{"", "None"}};
