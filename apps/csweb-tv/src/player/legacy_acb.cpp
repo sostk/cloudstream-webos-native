@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // ACB call sequence: Kodi MediaPipelineWebOS/RendererStarfish and Moonlight SS4S
-// smp_resource_acb.c. ABI checked by the compiler against the webOS NDK header;
-// all entry points are dlsym'd so newer firmware need not provide libAcbAPI.
+// smp_resource_acb.c. Stable declarations use the webOS NDK header; metadata uses
+// the modern three-argument ABI even with an older SDK (see MediaDataFn below).
+// All entry points are dlsym'd so newer firmware need not provide libAcbAPI.
 #include "player/legacy_acb.hpp"
 
 #include "wnk/log.hpp"
@@ -15,6 +16,11 @@
 namespace csweb::player {
 namespace {
 constexpr const char *kCat = "legacy-acb";
+// Old NDK headers declare setMediaVideoData(long, const char*) and omit audio.
+// webOS 4.x requires a real taskId out-pointer: the two-argument call can corrupt
+// memory. This is the modern AcbAPI.h / Kodi / PlxNative ABI; SS4S likewise casts
+// around old headers. Do not derive these two types from an older SDK declaration.
+using MediaDataFn = int (*)(long, const char *, long *);
 
 struct Api {
     void *handle = nullptr;
@@ -24,8 +30,8 @@ struct Api {
     decltype(&AcbAPI_finalize) finalize = nullptr;  // optional; destroy is required
     decltype(&AcbAPI_setSinkType) sink = nullptr;
     decltype(&AcbAPI_setMediaId) media_id = nullptr;
-    decltype(&AcbAPI_setMediaVideoData) video = nullptr;
-    decltype(&AcbAPI_setMediaAudioData) audio = nullptr;  // absent on some older firmware
+    MediaDataFn video = nullptr;
+    MediaDataFn audio = nullptr;  // absent on some older firmware
     decltype(&AcbAPI_setState) state = nullptr;
     decltype(&AcbAPI_setDisplayWindow) display = nullptr;
     decltype(&AcbAPI_setCustomDisplayWindow) custom_display = nullptr;  // optional crop/scale path

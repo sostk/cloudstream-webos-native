@@ -140,6 +140,21 @@ class LegacyAcbTest(unittest.TestCase):
         self.assertNotIn("libAcbAPI", needed)
         self.assertNotIn("libplayerAPIs", needed)
 
+    def test_compiles_with_old_ndk_metadata_declarations(self):
+        # CI's NDK omits audio and declares video with two arguments. The runtime
+        # ABI still requires three; the firmware test asserts a real task pointer.
+        with tempfile.TemporaryDirectory() as directory:
+            include = pathlib.Path(directory)
+            dest = include / "appswitching-control-block/AcbAPI.h"
+            dest.parent.mkdir()
+            header = (FIXTURES / "appswitching-control-block/AcbAPI.h").read_text()
+            header = header.replace("int AcbAPI_setMediaAudioData(long, const char *, long *);\n", "")
+            header = header.replace("int AcbAPI_setMediaVideoData(long, const char *, long *);",
+                                    "int AcbAPI_setMediaVideoData(long, const char *);")
+            dest.write_text(header)
+            run(self.common[:1] + ["-I" + str(include)] + self.common[1:] +
+                ["-fsyntax-only", str(ROOT / "apps/csweb-tv/src/player/legacy_acb.cpp")])
+
     def test_generation_leaves_kit_untouched_and_refuses_unreviewed_kit_sources(self):
         before = {path: hashlib.sha256((KIT / path).read_bytes()).hexdigest() for path in GENERATOR.PINS}
         GENERATOR.generate(KIT, self.generated)

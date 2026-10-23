@@ -64,8 +64,11 @@ Required symbols and Starfish's `getMediaID()` are checked before playback. Miss
 symbols, initialization failures and media-binding failures produce a playback
 error rather than continuing with an unbound video plane.
 
-The bridge uses the actual NDK `AcbAPI.h` declarations to type its function
-pointers, including the real `long *taskId` output arguments. It initializes an
+The bridge uses the NDK `AcbAPI.h` declarations for stable functions. CI's older
+NDK declares video metadata with two arguments and omits audio metadata, so those
+two dynamic function pointers explicitly use the modern three-argument ABI from
+the published header and reference players, including real `long *taskId` output
+arguments. Tests compile with both declaration sets. It initializes an
 MSE player for `org.csweb.tv.legacy`, selects the main sink, binds Starfish's media
 ID on load completion, forwards video/audio-info callbacks verbatim, sets the
 source/destination rectangle, and mirrors loaded/playing/paused/unloaded states.
