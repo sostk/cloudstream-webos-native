@@ -42,19 +42,50 @@ The hook is deferred to the kit's root CMake directory, where SDL's ExternalProj
 stamp commands are defined. Registering it directly from the app subdirectory
 failed at generation in run 39885909950; that build-hook error is corrected.
 
-Missing protocol state now returns NULL with an SDL error before allocating or
-touching the exported-window list. The kit's existing NULL-window handling logs a
-warning and constructs the Starfish payload without a windowId. The guard is not a
-claim that the older firmware can display video without an exported window.
-That fallback still requires a TV test; any subsequent failure must be read from
-the new logs.
+Missing protocol state returns NULL with an SDL error before allocating or
+touching the exported-window list. This protects window creation; older firmware
+also needs a display-control fallback to connect decoded video to the panel.
 
-Kodi's MediaPipelineWebOS checks SupportsExportedWindow and, when false, uses
-AcbAPI_initialize; RendererStarfish uses AcbAPI_setCustomDisplayWindow on that path.
-That is evidence of a separate legacy display-control mechanism, not proof that
-omitting windowId alone suffices. If the crash guard exposes a black video plane,
-inspect the TV's ACB API before implementing a bridge; do not guess its ABI or
-claim full playback from the guard tests.
+## Legacy-only ACB display control
+
+With `CSWEB_LEGACY=ON` and `WNK_WEBOS=ON`, the app builds a separate
+`LegacyStarfishBackend`. `tools/make-legacy-starfish.py` reads the pinned kit's
+backend/header, verifies both SHA-256 hashes, and writes the adapted sources into
+the app's build directory. It never rewrites kit files. A kit update that changes
+these inputs requires reviewing the integration; generation fails closed.
+The main and host app builds continue to use the original kit backend. No ART,
+runtime inputs, kit pin or main-package dependencies change.
+
+The legacy backend first tries the guarded SDL exported-window API. A returned
+window is used exactly as before, including `option.windowId`, with no ACB lookup.
+If the SDL entry points are absent or creation returns NULL, it dynamically loads
+the TV's `libAcbAPI.so.1`. The library is neither bundled nor added to DT_NEEDED.
+Required symbols and Starfish's `getMediaID()` are checked before playback. Missing
+symbols, initialization failures and media-binding failures produce a playback
+error rather than continuing with an unbound video plane.
+
+The bridge uses the actual NDK `AcbAPI.h` declarations to type its function
+pointers, including the real `long *taskId` output arguments. It initializes an
+MSE player for `org.csweb.tv.legacy`, selects the main sink, binds Starfish's media
+ID on load completion, forwards video/audio-info callbacks verbatim, sets the
+source/destination rectangle, and mirrors loaded/playing/paused/unloaded states.
+Audio metadata, custom display rectangles and finalize are optional symbols;
+setDisplayWindow and destroy provide the required baseline.
+
+Firmware callbacks only queue data. The playback thread applies ACB work after
+Starfish `Load()` has returned, so synchronous callbacks cannot bind a half-loaded
+object or call back into Starfish from inside its Load call. The UI thread queues
+display-area changes. Each playback has a new ACB handle, released after Starfish
+unload; the kit's epoch registry drops events from retired playback instances.
+
+Reference implementations and ABI declarations reviewed:
+
+- [Kodi optional export and ACB load path](https://github.com/xbmc/xbmc/blob/a097d6978028aef8840b23695a57c606697f156a/xbmc/cores/VideoPlayer/MediaPipelineWebOS.cpp)
+  and [display placement](https://github.com/xbmc/xbmc/blob/a097d6978028aef8840b23695a57c606697f156a/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/RendererStarfish.cpp).
+- [Moonlight SS4S ACB resource](https://github.com/mariotaku/ss4s/blob/dfba721b85420ccabf91dac65be73984bf1865f9/modules/webos/smp/src/smp_resource_acb.c).
+- [PlxNative display-path resolution and ACB ABI notes](https://github.com/GLinnik21/plx-native/blob/6ca6fbfd6a0ae8eb312f9cc497828825578f8f1d/src/starfish.c).
+- [webOS SDK-compatible ACB declarations](https://github.com/webosbrew/webos-userland/blob/00a5f8721e15d5c10030b99b2f3e73e0c527bcce/include/appswitching-control-block/AcbAPI.h)
+  and [Starfish declarations/event numbers](https://github.com/webosbrew/webos-userland/blob/00a5f8721e15d5c10030b99b2f3e73e0c527bcce/include/starfish-media-pipeline/StarfishMediaAPIs.h).
 
 ## Validation and next TV test
 
@@ -68,10 +99,23 @@ the actual app hook, checks the guard runs before configure, and verifies the
 main and host modes leave SDL unchanged. It runs where CMake is available (CI);
 this local environment lacks CMake, so only that integration test is skipped locally.
 
-After installing the updated legacy package, test one video and collect events.log,
-runtime.log and a fresh crash.log if generated. Check for the exported-window warning
-and subsequent player load/state messages. No root, SIGQUIT, altered extension,
-certificate-verification bypass or change to the aarch64 package is needed.
+`tests/test_legacy_acb.py` compiles the generated backend against fake firmware
+libraries. It covers early/delayed callbacks, media and metadata binding, display
+placement, pause/resume, repeated playback, stale callbacks, missing libraries and
+symbols, initialization/load/binding failures, optional functions, and absence of
+link-time ACB/playerAPIs dependencies. The exported-window case works without ACB
+or getMediaID. A separate CMake test checks main/host opt-out and builds the legacy
+target where CMake is available.
+
+After installing the updated legacy package, test video, audio, aspect ratio,
+pause/resume, seeking, returning to browsing and playing a second video. Collect
+events.log, runtime.log and a fresh crash.log if generated. On the older firmware,
+expect `[legacy-acb] display path ACB: initialized`, then `bind`, `state LOADED`,
+`video metadata`, `display`, and playing state messages, followed by Starfish's
+`first frame presented`. Return codes and callbacks are diagnostic evidence;
+only an actual picture and audio confirm playback. ACB presence alone does not
+prove the developer-mode jail grants media access. No root or firmware changes
+are part of this fix. Playback on the tester's TV remains unverified.
 
 The runtime log also contains intermittent Bilibili hostname-verification errors,
 while later API requests return links. Those errors are separate from the native

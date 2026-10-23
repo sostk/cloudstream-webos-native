@@ -1,5 +1,10 @@
 # Legacy package: TVs with a 32-bit kernel
 
+Legacy playback also has an opt-in ACB video-plane fallback for firmware without
+SDL exported-window support. See [legacy-playback.md](legacy-playback.md) for the
+implementation, tests and TV validation checklist. The main package keeps the
+kit's original playback backend.
+
 The main package (`org.csweb.tv`) needs two things some older LG TVs do not have:
 
 | Needs | Why | Seen on an old TV (webOS 4.4.3, Mali-G51) |

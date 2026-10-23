@@ -11,12 +11,20 @@
 #include "wnk/media/ffmpeg_source.hpp"
 #include "wnk/media/ndl_backend.hpp"
 #include "wnk/media/pacing_backend.hpp"
+#if defined(CSWEB_LEGACY) && defined(CSWEB_LEGACY_VIDEO_PLANE)
+#include "player/legacy_starfish_backend.hpp"
+#else
 #include "wnk/media/starfish_backend.hpp"
+#endif
 #include "wnk/platform/process.hpp"
 
 namespace csweb::player {
 
 using namespace wnk::media;
+#if defined(CSWEB_LEGACY) && defined(CSWEB_LEGACY_VIDEO_PLANE)
+using StarfishBackend = wnk::media::LegacyStarfishBackend;
+using StarfishOptions = wnk::media::LegacyStarfishOptions;
+#endif
 
 std::unique_ptr<MediaBackend> make_backend(const DeviceMediaCaps &device) {
     if (!wnk::platform::kIsWebOS) return std::make_unique<PacingBackend>();
@@ -24,6 +32,9 @@ std::unique_ptr<MediaBackend> make_backend(const DeviceMediaCaps &device) {
     const bool starfish = StarfishBackend::available(&why_sf);
     const bool ndl = NdlBackend::available(&why_ndl);
     StarfishOptions so;
+#if defined(CSWEB_LEGACY) && defined(CSWEB_LEGACY_VIDEO_PLANE)
+    so.app_id = "org.csweb.tv.legacy";  // the id this package registers with SAM
+#endif
     so.dolby_vision = device.dolby_vision == true;
     so.atmos = device.dolby_atmos == true;
     if (starfish && ndl) return std::make_unique<AutoBackend>(std::make_unique<StarfishBackend>(so), std::make_unique<NdlBackend>());

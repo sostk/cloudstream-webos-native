@@ -111,6 +111,9 @@ add_library(csweb_player STATIC
         src/player/merged_source.cpp
         src/player/subtitle_file.cpp)
 target_link_libraries(csweb_player PUBLIC csweb_core wnk_media wnk_media_ffmpeg wnk_media_ndl wnk_media_starfish)
+if (CSWEB_LEGACY AND WNK_WEBOS)
+    include(cmake/LegacyVideoPlane.cmake)
+endif ()
 
 # ---- csweb-tv: the app ------------------------------------------------------------------------------
 add_executable(csweb-tv
