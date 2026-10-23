@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "appswitching-control-block/AcbAPI.h"
 #include "trace.hpp"
+#include <dlfcn.h>
 
 static AcbAPI_Callback saved_callback;
 static long next_id = 40;
@@ -18,6 +19,11 @@ bool AcbAPI_initialize(long, AcbAPI_PlayerType type, const char *app, AcbAPI_Cal
 void AcbAPI_destroy(long id) {
     trace("acb.destroy %ld", id);
     saved_callback(id, 0, 0, 1, 0, "late callback");
+    if (flag("ACB_TEST_REENTRANT_CLEANUP")) {
+        auto emit = reinterpret_cast<void (*)()>(dlsym(RTLD_DEFAULT, "starfish_test_late_event"));
+        assert(emit);
+        emit();
+    }
 }
 #ifndef ACB_NO_OPTIONAL
 int AcbAPI_finalize(long) { trace("acb.finalize"); return 0; }

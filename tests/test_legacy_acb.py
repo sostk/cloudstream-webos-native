@@ -126,7 +126,7 @@ class LegacyAcbTest(unittest.TestCase):
                                    ({"init_fail": 1}, "create/initialize"),
                                    ({"empty_media": 1}, "binding failed"),
                                    ({"bind_fail": 1}, "binding failed"),
-                                   ({"load_fail": 1}, "Load refused")):
+                                   ({"load_fail": 1, "reentrant_cleanup": 1}, "Load refused")):
             with self.subTest(options=options):
                 lines = self.exercise(failure=True, **options)
                 self.assertIn(expected, next(x for x in lines if x.startswith("expected.error")))

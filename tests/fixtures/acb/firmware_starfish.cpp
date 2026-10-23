@@ -5,7 +5,11 @@ using Callback = void (*)(int, long long, const char *, void *);
 struct Object { Callback callback; void *context; };
 static Callback late_callback;
 static void *late_context;
+static Object *last_object;
 extern "C" {
+void starfish_test_late_event() {
+    last_object->callback(4, 0, "{\"video\":\"STALE\"}", last_object->context);
+}
 void ctor(void *, const char *) __asm__("_ZN17StarfishMediaAPIsC1EPKc");
 void dtor(void *) __asm__("_ZN17StarfishMediaAPIsD1Ev");
 int load(void *, const char *, Callback, void *) __asm__("_ZN17StarfishMediaAPIs4LoadEPKcPFvixS1_PvES2_");
@@ -32,6 +36,7 @@ void metadata(Object *p) {
 int load(void *p, const char *payload, Callback cb, void *ctx) {
     auto *o = static_cast<Object *>(p);
     o->callback = cb; o->context = ctx;
+    last_object = o;
     if (late_callback) late_callback(4, 0, "{\"video\":\"STALE\"}", late_context);
     setenv("ACB_TEST_INSIDE_LOAD", "1", 1);
     trace("sf.load %s", payload);

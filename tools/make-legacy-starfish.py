@@ -72,6 +72,12 @@ def generate(kit, output):
     void *object = nullptr;''')
     source = replace_once(source, '        *error = "out of memory";',
                           '        acb_.close();\n        *error = "out of memory";')
+    # ACB cleanup can trigger firmware callbacks: retire the epoch, then release
+    # the registry lock before calling into the library.
+    source = replace_once(source,
+                          '        std::lock_guard<std::mutex> lock(g_registry_mutex);\n        g_registry.erase(epoch);\n',
+                          '        {\n            std::lock_guard<std::mutex> lock(g_registry_mutex);\n'
+                          '            g_registry.erase(epoch);\n        }\n')
     source = replace_once(source, '        *error = "StarfishMediaAPIs::Load refused the stream";',
                           '        acb_.close();\n        *error = "StarfishMediaAPIs::Load refused the stream";')
     source = replace_once(source, '    // Placing the window is an SDL call: the main thread does it through set_area().',
