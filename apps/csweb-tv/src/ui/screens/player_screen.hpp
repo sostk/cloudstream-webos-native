@@ -36,6 +36,7 @@
 namespace csweb::ui {
 
 class PillButton;
+class SeekBar;
 
 class PlayerScreen : public wnk::ui::Screen {
  public:
@@ -114,7 +115,7 @@ class PlayerScreen : public wnk::ui::Screen {
     wnk::ui::Column *bar_ = nullptr;
     wnk::ui::Label *title_ = nullptr, *status_ = nullptr, *time_ = nullptr, *source_ = nullptr;
     wnk::ui::Row *bar_badge_row_ = nullptr;
-    wnk::ui::ProgressBar *progress_ = nullptr;
+    SeekBar *progress_ = nullptr;
     PillButton *pause_ = nullptr;
     wnk::ui::Spinner *spinner_ = nullptr;
     double last_input_ms_ = 0;

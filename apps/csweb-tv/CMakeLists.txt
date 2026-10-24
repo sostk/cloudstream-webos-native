@@ -49,6 +49,7 @@ add_library(csweb_core STATIC
         src/core/zip_check.cpp
         src/library/library.cpp
         src/library/library_store.cpp
+        src/player/scrub.cpp
         src/plugins/plugin_data.cpp
         src/plugins/plugin_manager.cpp
         src/plugins/plugin_store.cpp
@@ -70,7 +71,7 @@ endif ()
 
 # ---- tests (host) -----------------------------------------------------------------------------------
 if (WNK_BUILD_TESTS)
-    foreach (t sha256 zip_check repository runtime_types plugin_store runtime_client episode_groups redact deep_link library dir_snapshot preferences provider_test profiles http_url)
+    foreach (t sha256 zip_check repository runtime_types plugin_store runtime_client episode_groups redact deep_link library dir_snapshot preferences provider_test profiles http_url scrub)
         add_executable(csweb_test_${t} tests/test_${t}.cpp)
         target_include_directories(csweb_test_${t} PRIVATE "${PROJECT_SOURCE_DIR}/tests/unit")
         target_compile_definitions(csweb_test_${t} PRIVATE CSWEB_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
@@ -143,6 +144,7 @@ add_executable(csweb-tv
         src/ui/widgets/pin_pad.cpp
         src/ui/widgets/profile_avatar.cpp
         src/ui/widgets/quality_badge.cpp
+        src/ui/widgets/seek_bar.cpp
         src/ui/widgets/top_bar.cpp
         src/ui/widgets/type_chips.cpp)
 target_link_libraries(csweb-tv PRIVATE csweb_core csweb_player wnk_app wnk_media_ui)
