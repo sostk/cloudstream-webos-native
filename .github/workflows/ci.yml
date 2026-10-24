@@ -274,7 +274,7 @@ jobs:
 
       - name: Runtime cache key
         id: runtime-key
-        run: echo "key=runtime-armv7-${{ hashFiles('runtime/**', 'tools/build-runtime.sh', 'tools/fetch-runtime-inputs.sh', 'tools/instrument-legacy-loader.py', 'test-plugins/conformance/**') }}" >> "$GITHUB_OUTPUT"
+        run: echo "key=runtime-armv7-notices-bootstrap-${{ hashFiles('runtime/**', 'tools/build-runtime.sh', 'tools/fetch-runtime-inputs.sh', 'tools/instrument-legacy-loader.py', 'test-plugins/conformance/**') }}" >> "$GITHUB_OUTPUT"
 
       - name: Cache the runtime
         id: runtime-cache
@@ -303,6 +303,15 @@ jobs:
         run: |
           CSWEB_ARMV7_ART_DIR="$GITHUB_WORKSPACE/runtime/native/out/art-armv7" \
             tools/build-runtime.sh --arch armv7
+          python3 tools/prepare-legacy-notices.py prepare runtime/rootfs/armv7 runtime/dist/runtime-armv7
+          if grep -qv '^#' runtime/native/out/legacy-licenses/packages.tsv; then
+            docker run --rm -v "$GITHUB_WORKSPACE":/p \
+              -e CSWEB_LICENSES_DIR=/p/runtime/native/out/legacy-licenses -e CARCH=armv7 \
+              alpine:edge sh /p/runtime/collect-licenses.sh
+          fi
+          python3 tools/prepare-legacy-notices.py finish runtime/rootfs/armv7 runtime/dist/runtime-armv7
+          python3 runtime/make_dist.py --manifest runtime/dist/runtime-armv7
+          python3 tools/prepare-legacy-notices.py export
           tar -C runtime/dist -cf runtime-armv7.tar runtime-armv7
 
       - name: Keep the runtime for the package
