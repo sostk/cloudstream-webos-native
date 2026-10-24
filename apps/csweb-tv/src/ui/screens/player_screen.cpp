@@ -9,6 +9,7 @@
 #include "settings/preferences.hpp"
 #include "ui/theme/theme.hpp"
 #include "ui/widgets/pill_button.hpp"
+#include "ui/widgets/seek_bar.hpp"
 
 #include "wnk/log.hpp"
 #include "wnk/ui/forms.hpp"
@@ -93,7 +94,13 @@ PlayerScreen::PlayerScreen(app::Services &s, app::PlayTarget target)
     sub.set_visible(!target_.subtitle.empty());
     status_ = &top.add<Label>("");
     status_->set_muted(true).set_align(Align::End, Align::End);
-    progress_ = &bar_->add<ProgressBar>();
+    // Focusable like CloudStream's time bar: Up from the buttons, Left/Right scrub.
+    progress_ = &bar_->add<SeekBar>(
+        [this](Ui &, int64_t at) {
+            if (controller_) controller_->seek(at);
+        },
+        [this](Ui &) { show_controls(); });
+    progress_->name = "player.seekbar";
     auto &times = bar_->add<wnk::ui::Row>(24);
     time_ = &times.add<Label>("--:-- / --:--");
     time_->set_width(Dim::fill());
@@ -506,10 +513,12 @@ void PlayerScreen::update(Ui &ui, float dt) {
     status_->set_text(s.state == PlayState::Playing ? "" : play_state_name(s.state));
     pause_->set_icon(s.state == PlayState::Paused ? "play" : "pause");
     const bool live = s.duration_us == kNoTime && (s.info.container == "dash" || s.info.container == "hls");
-    time_->set_text(clock_text(s.position_us) + " / " + (live ? std::string("LIVE") : clock_text(s.duration_us)));
-    if (s.duration_us > 0 && s.position_us != kNoTime) progress_->set_value(static_cast<float>(s.position_us) / s.duration_us);
-    const bool keep = s.state != PlayState::Playing || ui.top_dialog() != nullptr;
+    progress_->set_times(s.position_us, s.duration_us);
+    // While scrubbing the time shows the target (Media3 updates exo_position on every scrub move).
+    time_->set_text(clock_text(progress_->shown_position()) + " / " + (live ? std::string("LIVE") : clock_text(s.duration_us)));
+    const bool keep = s.state != PlayState::Playing || ui.top_dialog() != nullptr || progress_->scrubbing();
     const bool visible = keep || ui.now_ms() - last_input_ms_ < 5000;
+    progress_->set_active(visible);
     bar_->set_opacity(visible ? 1.0f : 0.0f);
     subs_view_->set_bottom_margin(visible ? 0.34f : 0.07f);
 
