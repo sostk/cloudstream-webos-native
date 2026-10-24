@@ -2,7 +2,7 @@
 
 Date/time: 2026-10-20
 Branch/commit: `main` (project repository; see `git log`)
-Native App Kit commit: `5b07b2df724e414b9efed9c46ed18df6e4f647b3` (upstream main, no local patches;
+Native App Kit commit: `7fe49ab791a33fd135aec349c0929c959d99c146` (upstream main, no local patches;
 pinned in tools/fetch-kit.sh; the project's kit changes are merged upstream, docs/kit-patches/README.md)
 CloudStream: source `eb962b4fb7b1387b8de42ec58000cee0a01fe741`; pre-release APK sha256 `add4b760…6d83`
 Runtime: Alpine art_standalone 0_git20251009-r3 (aarch64 on the TV, x86_64 on the host), wolfSSL 5.9.4

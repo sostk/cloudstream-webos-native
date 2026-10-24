@@ -1,10 +1,9 @@
 # Kit patch 0007: backend errors fail playback; stuck-call warning; seek target as position
 
-> Not yet upstream. Kit branch `fix/backend-error-seek-target` (three commits on `5b07b2d`) in the
-> local checkout; to be offered as a pull request, after which the pin moves and this patch goes.
+> Merged upstream as https://github.com/Native-Webos/webos-native-app-kit/pull/12 (merge `7fe49ab`, 2026-10-24); since kit `7fe49ab` the project no longer carries this patch. Kept as the record of why and how it was tested; the patch file is in git history.
 
 Applies to Native App Kit `5b07b2df724e414b9efed9c46ed18df6e4f647b3`.
-Patch: `0007-backend-error-seek-target.patch` (`git am`; media/src/controller.cpp,
+Patch (in git history): `0007-backend-error-seek-target.patch` (`git am`; media/src/controller.cpp,
 media/include/wnk/media/controller.hpp, tests/unit/test_media.cpp).
 
 ## Why
