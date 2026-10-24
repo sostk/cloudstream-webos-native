@@ -34,12 +34,17 @@ esac
 DIST="$ROOT/runtime/dist/runtime-$ARCH"
 # aarch64's Alpine pins are in runtime/inputs.lock; another arch has its own lock (runtime/inputs-<arch>.lock).
 # Until that lock exists the arch's Alpine packages are taken unpinned from edge (CloudStream stays pinned),
-# its manifest is rewritten, and missing licence notices are reported instead of failing the build.
+# its manifest is rewritten. ARMv7 notices become strict once their inventory is committed below.
 ARCH_LOCK="$ROOT/runtime/inputs-$ARCH.lock"
 PIN_ALPINE=1
 if [[ $ARCH != aarch64 && ! -f $ARCH_LOCK ]]; then PIN_ALPINE=0; fi
 NOTICES_STRICT=1
 if (( LATEST || ! PIN_ALPINE )); then NOTICES_STRICT=0; fi
+# Once ARMv7 notices are committed, normal legacy builds must match them even
+# while its APK inputs remain unpinned. --latest remains an exploratory build.
+if [[ $ARCH == armv7 && $LATEST == 0 && -f "$ROOT/runtime/licenses-armv7/packages.tsv" ]]; then
+    NOTICES_STRICT=1
+fi
 step() { echo "== build-runtime: $*"; }
 run() { docker run --rm -v "$ROOT":/p "$@"; }
 
