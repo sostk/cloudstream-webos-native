@@ -87,21 +87,43 @@ unpinned bootstrap only. Pinned aarch64 builds and their inputs are unchanged.
 ## First-time setup (once per move of the pins)
 
 Until `runtime/inputs-armv7.lock` exists, `build-runtime.sh --arch armv7` takes the armv7 packages unpinned
-from Alpine edge (CloudStream stays pinned) and only reports missing licence notices. To pin and license it,
-after a build that worked on a TV:
+from Alpine edge (CloudStream stays pinned). The committed `runtime/licenses-armv7/` inventory describes
+the shipped ARMv7 files, including the rebuilt ART package. Normal legacy builds check that inventory
+strictly, even before APK pinning: dependency changes must have their notices regenerated and reviewed.
+`--latest` remains an exploratory build and does not enforce the committed inventory.
+
+To regenerate notices after a dependency change, run `tools/build-runtime.sh --arch armv7`.
+If it stops at the notices check, its rootfs and distribution are already available. Then run:
+
+```sh
+python3 tools/prepare-legacy-notices.py prepare runtime/rootfs/armv7 runtime/dist/runtime-armv7
+# Reuse existing texts only when origin, recipe commit, version, licence and upstream match.
+# Collect sources that did not match (skip Docker when this file contains only its header):
+if grep -qv '^#' runtime/native/out/legacy-licenses/packages.tsv; then
+  docker run --rm -v "$PWD":/p \
+    -e CSWEB_LICENSES_DIR=/p/runtime/native/out/legacy-licenses -e CARCH=armv7 \
+    alpine:edge sh /p/runtime/collect-licenses.sh
+fi
+python3 tools/prepare-legacy-notices.py finish runtime/rootfs/armv7 runtime/dist/runtime-armv7
+python3 runtime/make_dist.py --manifest runtime/dist/runtime-armv7
+```
+
+Review and commit `runtime/rootfs-armv7.manifest` and `runtime/licenses-armv7/`, then run a normal
+legacy build to verify them. The helper also installs the notices into the runtime distribution;
+rebuild the IPK to include them. Releases include the legacy package only when CI builds it and
+the committed ARMv7 inventory exists. The release publication guard remains in place.
+
+After a build has worked on a TV, pin its APK inputs separately:
 
 ```
 python3 runtime/tools/make_lock.py armv7          # writes runtime/inputs-armv7.lock from rootfs-armv7.manifest
 #  upload ~/.cache/csweb-runtime-inputs/alpine/armv7/*.apk to a runtime-inputs-N release (asset name =
 #  path with / -> _) and add its "# mirror: <url>" line to the lock
-export CSWEB_LICENSES_DIR=$PWD/runtime/licenses-armv7
-python3 runtime/tools/notices.py packages runtime/rootfs/armv7 runtime/dist/runtime-armv7
-docker run --rm -v $PWD:/p -e CSWEB_LICENSES_DIR=/p/runtime/licenses-armv7 alpine:edge sh /p/runtime/collect-licenses.sh
-python3 runtime/tools/notices.py render
 ```
 
-Commit `runtime/rootfs-armv7.manifest`, `runtime/inputs-armv7.lock` and `runtime/licenses-armv7/`. From then
-on the armv7 build is pinned, its notices check is strict, and releases include the legacy package.
+Commit `runtime/inputs-armv7.lock` with its corresponding manifest and notices. Pinning the rebuilt ART
+APK also requires retaining and verifying its signing public key, as described above; the current
+unpinned rebuild path does not implement that pinned-APK installation yet.
 
 ## To check on the TV
 
