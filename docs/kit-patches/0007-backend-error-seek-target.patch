@@ -1,0 +1,835 @@
+From d5242b96be5b42d0033fa277c6cb77db780583ab Mon Sep 17 00:00:00 2001
+From: sostk <poudelswastik@gmail.com>
+Date: Sat, 24 Oct 2026 22:25:49 +1100
+Subject: [PATCH 1/3] Name the blocking call when the playback thread misses
+ its stop deadline
+
+A webOS 4.4.3 tester's log (cloudstream-webos-native issue 15) shows a
+playback thread that never came back after its first video frame: stop()
+gave up after 2 s and detached it, the decoder was never unloaded, and
+every later Load waited 20 s for it. The warning did not say whether the
+thread was in a Starfish call, a source call or waiting on the reader.
+
+- media/src/controller.cpp: a Busy marker on the playback thread around
+  every backend call (load, feed, unload, pause/play, flush, end of
+  stream), source open/seek and the reader park/join; the stop deadline
+  warning names it and how long it has been running.
+- unload_backend()/pause_backend() helpers carry the marker; steady_ms()
+  replaces the repeated steady-clock arithmetic.
+- tests/unit/test_media.cpp: the stuck-load test checks the warning says
+  "in backend load".
+
+Verified with host tests (test_media 39/39).
+---
+ media/include/wnk/media/controller.hpp |   3 +-
+ media/src/controller.cpp               | 147 +++++++++++++++----------
+ tests/unit/test_media.cpp              |  29 +++++
+ 3 files changed, 120 insertions(+), 59 deletions(-)
+
+diff --git a/media/include/wnk/media/controller.hpp b/media/include/wnk/media/controller.hpp
+index 98cce50..c71cc71 100644
+--- a/media/include/wnk/media/controller.hpp
++++ b/media/include/wnk/media/controller.hpp
+@@ -132,7 +132,8 @@ class PlaybackController {
+     void seek_relative(int64_t delta_us);
+     // Stops playback, unloads the backend and joins the thread (bounded by stop_deadline).
+     // Returns false if the thread did not finish in time: it is then detached and keeps the
+-    // controller's internal state alive until it ends, so it never touches freed memory.
++    // controller's internal state alive until it ends, so it never touches freed memory. The
++    // warning logged then names the source/backend call the thread is blocked in.
+     bool stop();
+ 
+     void set_video_area(const Rect &pixels);
+diff --git a/media/src/controller.cpp b/media/src/controller.cpp
+index fe1f6a1..08dff2e 100644
+--- a/media/src/controller.cpp
++++ b/media/src/controller.cpp
+@@ -11,6 +11,11 @@ constexpr const char *kCat = "media";
+ // With no end-of-stream event from the backend, playback is over once the estimated position has
+ // passed the last PTS fed by this much (the decoder's own delay).
+ constexpr int64_t kEndSlackUs = 300000;
++
++int64_t steady_ms() {
++    return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch())
++        .count();
++}
+ }  // namespace
+ 
+ const char *play_state_name(PlayState s) {
+@@ -70,6 +75,15 @@ struct PlaybackController::Core {
+         int64_t pts_us = 0;  // Audio: the track
+         bool release = false;  // Pause: unload the decoder even if the backend can pause
+     };
++    // Names the call the playback thread is blocked in, for stop()'s warning when it never returns.
++    struct Busy {
++        Busy(Core &c, const char *what) : core(c), prev(c.busy_in_.exchange(what)) {
++            if (prev == nullptr) core.busy_since_ms_ = steady_ms();
++        }
++        ~Busy() { core.busy_in_ = prev; }
++        Core &core;
++        const char *prev;
++    };
+     void post(Command c);
+     void run();
+     bool apply(const Command &c);  // false: leave the loop
+@@ -81,6 +95,8 @@ struct PlaybackController::Core {
+     void do_resume();
+     void do_audio(int track);
+     bool load_backend();
++    void unload_backend();
++    bool pause_backend(bool paused);
+     void feed_one();
+     bool prime_done() const;  // playback thread
+     void clear_lanes();
+@@ -148,6 +164,8 @@ struct PlaybackController::Core {
+     std::atomic<bool> eos_seen_{false};
+     std::thread thread_;
+     bool joined_ = false;
++    std::atomic<const char *> busy_in_{nullptr};
++    std::atomic<int64_t> busy_since_ms_{0};
+ };
+ 
+ PlaybackController::Core::Core(std::unique_ptr<MediaSource> source, std::unique_ptr<MediaBackend> backend,
+@@ -243,11 +261,10 @@ void PlaybackController::Core::toggle_pause() {
+ }
+ 
+ void PlaybackController::Core::seek(int64_t pts_us) {
+-    last_seek_request_ms_ = std::chrono::duration_cast<std::chrono::milliseconds>(
+-                                std::chrono::steady_clock::now().time_since_epoch())
+-                                .count();
+-    last_seek_target_us_ = std::max<int64_t>(0, pts_us);
+-    post({Cmd::Seek, {}, std::max<int64_t>(0, pts_us)});
++    pts_us = std::max<int64_t>(0, pts_us);
++    last_seek_request_ms_ = steady_ms();
++    last_seek_target_us_ = pts_us;
++    post({Cmd::Seek, {}, pts_us});
+ }
+ 
+ void PlaybackController::Core::seek_relative(int64_t delta_us) {
+@@ -255,10 +272,7 @@ void PlaybackController::Core::seek_relative(int64_t delta_us) {
+     int64_t base = s.position_us != kNoTime ? s.position_us : 0;
+     // Presses in quick succession add up: while a seek is still on its way the position shown is
+     // not its target yet, so the next step starts from the target.
+-    const int64_t now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+-                               std::chrono::steady_clock::now().time_since_epoch())
+-                               .count();
+-    if (now_ms - last_seek_request_ms_.load() < 2000 && last_seek_target_us_.load() != kNoTime) {
++    if (steady_ms() - last_seek_request_ms_.load() < 2000 && last_seek_target_us_.load() != kNoTime) {
+         base = last_seek_target_us_.load();
+     }
+     int64_t target = base + delta_us;
+@@ -280,8 +294,10 @@ bool PlaybackController::Core::stop() {
+         thread_.join();
+         return true;
+     }
+-    WNK_LOGW(kCat, "playback thread did not stop within %lld ms; detached",
+-             static_cast<long long>(options_.stop_deadline.count()));
++    const char *in = busy_in_.load();
++    WNK_LOGW(kCat, "playback thread did not stop within %lld ms (%s%s for %lld ms); detached",
++             static_cast<long long>(options_.stop_deadline.count()), in != nullptr ? "in " : "not in a blocking call",
++             in != nullptr ? in : "", in != nullptr ? static_cast<long long>(steady_ms() - busy_since_ms_.load()) : 0LL);
+     thread_.detach();
+     return false;
+ }
+@@ -361,10 +377,7 @@ void PlaybackController::Core::fail(const std::string &error) {
+     source_ready_ = false;
+     leave_buffering(false);
+     clear_lanes();
+-    if (loaded_) {
+-        backend_->unload();
+-        loaded_ = false;
+-    }
++    unload_backend();
+     {
+         std::lock_guard<std::mutex> lock(mutex_);
+         clock_running_ = false;
+@@ -417,10 +430,7 @@ void PlaybackController::Core::run() {
+ // with mutex_ held.
+ bool PlaybackController::Core::hold_seek(const Command &c) const {
+     if (c.cmd != Cmd::Seek || commands_.size() > 1 || !loaded_ || !backend_->caps().seek_splices) return false;  // Stop & co. go through
+-    const int64_t now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+-                               std::chrono::steady_clock::now().time_since_epoch())
+-                               .count();
+-    if (now_ms - last_seek_applied_ms_ > 2500) return false;
++    if (steady_ms() - last_seek_applied_ms_ > 2500) return false;
+     return !backend_->splice_settled();
+ }
+ 
+@@ -450,14 +460,11 @@ bool PlaybackController::Core::apply(const Command &c) {
+             } else if (c.release && state() == PlayState::Paused && loaded_) {
+                 // Already held on a frame: give the decoder back; resume reloads and seeks back.
+                 clear_lanes();
+-                backend_->unload();
+-                loaded_ = false;
++                unload_backend();
+             }
+             break;
+         case Cmd::Seek:
+-            last_seek_applied_ms_ = std::chrono::duration_cast<std::chrono::milliseconds>(
+-                                        std::chrono::steady_clock::now().time_since_epoch())
+-                                        .count();
++            last_seek_applied_ms_ = steady_ms();
+             do_seek(c.pts_us);
+             break;
+         case Cmd::Stop:
+@@ -466,10 +473,7 @@ bool PlaybackController::Core::apply(const Command &c) {
+             source_ready_ = false;
+             leave_buffering(false);
+             clear_lanes();
+-            if (loaded_) {
+-                backend_->unload();
+-                loaded_ = false;
+-            }
++            unload_backend();
+             {
+                 std::lock_guard<std::mutex> lock(mutex_);
+                 clock_running_ = false;
+@@ -485,10 +489,7 @@ void PlaybackController::Core::do_open(const std::string &uri) {
+     park_reader();
+     source_ready_ = false;
+     leave_buffering(false);
+-    if (loaded_) {
+-        backend_->unload();
+-        loaded_ = false;
+-    }
++    unload_backend();
+     feeding_ = false;
+     clear_lanes();
+     priming_ = true;
+@@ -508,7 +509,12 @@ void PlaybackController::Core::do_open(const std::string &uri) {
+     set_state(PlayState::Opening);
+     source_->reset_interrupt();
+     std::string err;
+-    if (!source_->open(uri, &err)) {
++    bool opened;
++    {
++        const Busy busy(*this, "source open");
++        opened = source_->open(uri, &err);
++    }
++    if (!opened) {
+         fail("open failed: " + err);
+         return;
+     }
+@@ -551,7 +557,12 @@ bool PlaybackController::Core::load_backend() {
+         format = snap_.format;
+     }
+     std::string err;
+-    if (!backend_->load(format, &err)) {
++    bool loaded;
++    {
++        const Busy busy(*this, "backend load");
++        loaded = backend_->load(format, &err);
++    }
++    if (!loaded) {
+         fail(std::string(backend_->name()) + " load failed: " + err);
+         return false;
+     }
+@@ -559,6 +570,19 @@ bool PlaybackController::Core::load_backend() {
+     return true;
+ }
+ 
++void PlaybackController::Core::unload_backend() {
++    if (!loaded_) return;
++    const Busy busy(*this, "backend unload");
++    backend_->unload();
++    loaded_ = false;
++}
++
++bool PlaybackController::Core::pause_backend(bool paused) {
++    const Busy busy(*this, paused ? "backend pause" : "backend play");
++    return backend_->pause(paused);
++}
++
++
+ void PlaybackController::Core::do_seek(int64_t pts_us) {
+     const PlayState before = state();
+     if (before == PlayState::Idle || before == PlayState::Opening || before == PlayState::Error ||
+@@ -577,7 +601,7 @@ void PlaybackController::Core::do_seek(int64_t pts_us) {
+     }
+     park_reader();
+     if (buffering_) {
+-        if (loaded_) backend_->pause(false);  // the seek decides whether it plays or holds
++        if (loaded_) pause_backend(false);  // the seek decides whether it plays or holds
+         leave_buffering(false);
+     }
+     set_state(PlayState::Seeking);
+@@ -587,11 +611,17 @@ void PlaybackController::Core::do_seek(int64_t pts_us) {
+     source_done_ = false;
+     eos_seen_ = false;
+     std::string err;
+-    if (!source_->seek(pts_us, &err)) {
++    bool sought;
++    {
++        const Busy busy(*this, "source seek");
++        sought = source_->seek(pts_us, &err);
++    }
++    if (!sought) {
+         fail("seek failed: " + err);
+         return;
+     }
+     if (loaded_) {
++        const Busy busy(*this, "backend flush");
+         if (!backend_->flush(&err)) {
+             fail(std::string(backend_->name()) + " flush failed: " + err);
+             return;
+@@ -613,10 +643,7 @@ void PlaybackController::Core::do_seek(int64_t pts_us) {
+     } else {
+         // Stay paused at the new position; the decoder is reloaded on resume.
+         feeding_ = false;
+-        if (loaded_ && !caps.pause) {
+-            backend_->unload();
+-            loaded_ = false;
+-        }
++        if (!caps.pause) unload_backend();
+         set_state(PlayState::Paused);
+     }
+ }
+@@ -636,16 +663,13 @@ void PlaybackController::Core::do_pause(bool release) {
+         paused_at_us_ = at;
+         clock_running_ = false;
+     }
+-    if (hold && loaded_ && backend_->pause(true)) {
++    if (hold && loaded_ && pause_backend(true)) {
+         feeding_ = false;
+     } else {
+         // No real pause: stop feeding and release the decoder; resume reloads and seeks back.
+         feeding_ = false;
+         clear_lanes();
+-        if (loaded_) {
+-            backend_->unload();
+-            loaded_ = false;
+-        }
++        unload_backend();
+     }
+     set_state(PlayState::Paused);
+ }
+@@ -656,7 +680,7 @@ void PlaybackController::Core::do_resume() {
+         std::lock_guard<std::mutex> lock(mutex_);
+         at = paused_at_us_ != kNoTime ? paused_at_us_ : 0;
+     }
+-    if (loaded_ && backend_->caps().pause && backend_->pause(false)) {
++    if (loaded_ && backend_->caps().pause && pause_backend(false)) {
+         std::lock_guard<std::mutex> lock(mutex_);
+         paused_at_us_ = kNoTime;
+         clock_base_us_ = at;
+@@ -673,7 +697,12 @@ void PlaybackController::Core::do_resume() {
+         eos_seen_ = false;
+         clear_lanes();
+         priming_ = true;
+-        if (!source_->seek(at, &err)) {
++        bool sought;
++        {
++            const Busy busy(*this, "source seek");
++            sought = source_->seek(at, &err);
++        }
++        if (!sought) {
+             fail("seek on resume failed: " + err);
+             return;
+         }
+@@ -719,10 +748,7 @@ void PlaybackController::Core::do_audio(int track) {
+     park_reader();
+     leave_buffering(false);
+     clear_lanes();
+-    if (loaded_) {
+-        backend_->unload();
+-        loaded_ = false;
+-    }
++    unload_backend();
+     source_->reset_interrupt();
+     StreamFormat format;
+     std::string err;
+@@ -858,6 +884,7 @@ void PlaybackController::Core::park_reader() {
+         reader_on_ = false;
+     }
+     source_->interrupt();
++    const Busy busy(*this, "waiting for the reader");
+     std::unique_lock<std::mutex> lock(lanes_mutex_);
+     reader_cv_.wait(lock, [this] { return !reader_busy_; });
+ }
+@@ -880,6 +907,7 @@ void PlaybackController::Core::quit_reader() {
+     }
+     source_->interrupt();
+     reader_cv_.notify_all();
++    const Busy busy(*this, "joining the reader");
+     if (reader_.joinable() && reader_.get_id() != std::this_thread::get_id()) reader_.join();
+ }
+ 
+@@ -913,7 +941,7 @@ bool PlaybackController::Core::update_buffering() {
+         bool starving = false;
+         for (int i = 0; i < 2; ++i) starving = starving || (active[i] && empty[i] && lead[i] < options_.rebuffer_low_us);
+         if (!starving || done) return false;
+-        if (!backend_->pause(true)) return false;  // cannot hold: carry on as without buffering
++        if (!pause_backend(true)) return false;  // cannot hold: carry on as without buffering
+         buffering_ = true;
+         {
+             std::lock_guard<std::mutex> lock(mutex_);
+@@ -937,7 +965,7 @@ bool PlaybackController::Core::update_buffering() {
+     }
+     if (!enough && !done && bytes < options_.max_queue_bytes) return true;
+     WNK_LOGI(kCat, "buffered: queued %.2f s video, %.2f s audio%s", span[0] / 1e6, span[1] / 1e6, done ? " (source ended)" : "");
+-    backend_->pause(false);
++    pause_backend(false);
+     leave_buffering(/*restart_clock=*/true);
+     return false;
+ }
+@@ -975,6 +1003,7 @@ void PlaybackController::Core::feed_one() {
+         // Everything is fed: wait for the backend to present it.
+         if (!eos_sent_ && loaded_) {
+             eos_sent_ = true;
++            const Busy busy(*this, "backend end of stream");
+             backend_->end_of_stream();
+         }
+         bool ended = eos_seen_;
+@@ -1010,10 +1039,7 @@ void PlaybackController::Core::feed_one() {
+         }
+         if (backend_->caps().seek_splices) {
+             // Let a burst of seeks settle before anything of this target reaches the decoder.
+-            const int64_t now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+-                                       std::chrono::steady_clock::now().time_since_epoch())
+-                                       .count();
+-            const int64_t wait_ms = last_seek_request_ms_.load() + options_.seek_settle.count() - now_ms;
++            const int64_t wait_ms = last_seek_request_ms_.load() + options_.seek_settle.count() - steady_ms();
+             if (wait_ms > 0) {
+                 std::unique_lock<std::mutex> lock(mutex_);
+                 cv_.wait_for(lock, std::chrono::milliseconds(std::min<int64_t>(wait_ms, 20)),
+@@ -1063,7 +1089,12 @@ void PlaybackController::Core::feed_one() {
+     }
+ 
+     Packet &pkt = *heads[lane];
+-    switch (backend_->feed(pkt)) {
++    MediaBackend::Feed fed;
++    {
++        const Busy busy(*this, "backend feed");
++        fed = backend_->feed(pkt);
++    }
++    switch (fed) {
+         case MediaBackend::Feed::Accepted: {
+             {
+                 std::lock_guard<std::mutex> lock(mutex_);
+diff --git a/tests/unit/test_media.cpp b/tests/unit/test_media.cpp
+index 21a1ca1..c5d1b42 100644
+--- a/tests/unit/test_media.cpp
++++ b/tests/unit/test_media.cpp
+@@ -9,13 +9,17 @@
+ #define WNK_TEST_MAIN
+ #include "wnk_test.hpp"
+ 
++#include "wnk/log.hpp"
+ #include "wnk/media/auto_backend.hpp"
+ #include "wnk/media/controller.hpp"
+ #include "wnk/media/device_caps.hpp"
+ 
+ #include <atomic>
+ #include <chrono>
++#include <mutex>
++#include <string>
+ #include <thread>
++#include <vector>
+ 
+ using namespace wnk;
+ using namespace wnk::media;
+@@ -1074,7 +1078,24 @@ std::atomic<bool> StuckBackend::entered{false};
+ std::atomic<bool> StuckBackend::release{false};
+ }  // namespace
+ 
++namespace {
++struct LineSink final : log::Sink {
++    std::mutex *m;
++    std::vector<std::string> *lines;
++    LineSink(std::mutex *mu, std::vector<std::string> *l) : m(mu), lines(l) {}
++    void write(const log::Record &, const std::string &line) override {
++        std::lock_guard<std::mutex> lock(*m);
++        lines->push_back(line);
++    }
++};
++}  // namespace
++
+ TEST("controller: a playback thread stuck past the stop deadline outlives the controller safely") {
++    std::mutex m;
++    std::vector<std::string> lines;
++    log::Logger logger(log::Level::Info);
++    logger.add_sink(std::make_unique<LineSink>(&m, &lines));
++    log::set_default_logger(&logger);
+     async::MainDispatcher main;
+     PlaybackOptions o;
+     o.stop_deadline = 100ms;
+@@ -1085,10 +1106,18 @@ TEST("controller: a playback thread stuck past the stop deadline outlives the co
+     while (!StuckBackend::entered && std::chrono::steady_clock::now() < end) std::this_thread::sleep_for(2ms);
+     REQUIRE(StuckBackend::entered.load());
+     CHECK(!pc->stop());  // detached
++    {
++        // The warning says where the thread is stuck.
++        std::lock_guard<std::mutex> lock(m);
++        bool named = false;
++        for (const std::string &l : lines) named = named || l.find("in backend load for") != std::string::npos;
++        CHECK(named);
++    }
+     pc.reset();          // the handle goes; the thread still holds the state
+     StuckBackend::release = true;
+     std::this_thread::sleep_for(300ms);  // the thread finishes, feeds, sees Stop and ends on its own
+     main.drain();                        // nothing posted after destruction reaches a callback
++    log::set_default_logger(nullptr);
+ }
+ 
+ TEST("device caps: tv.model.edidType names DTS only where it says so") {
+-- 
+2.43.0
+
+
+From 35f31e4b9361181a2a37b8eb9de6aab9f8da3d49 Mon Sep 17 00:00:00 2001
+From: sostk <poudelswastik@gmail.com>
+Date: Sat, 24 Oct 2026 22:25:49 +1100
+Subject: [PATCH 2/3] Fail playback when the backend reports an error
+
+Starfish reports a stream it cannot play with event 18 ("Resource
+Allocation Error" 601, "Playing error" 100). The backend already turned
+it into BackendEvent::Error, but the controller ignored it: on the same
+webOS 4.4.3 log every Load after the stuck one returned after 20 s with
+601, and the controller still went Ready -> Playing, leaving the app's
+controls over a black picture with no way to tell.
+
+- media/src/controller.cpp: BackendEvent::Error queues a Fail command;
+  the playback thread fails with the backend's reason (unloading the
+  decoder) unless already idle, failed or stopped, so a repeated event
+  fails once. An event during a Load that blocks lands once it returns.
+- media/include/wnk/media/controller.hpp: the state diagram says so.
+- tests/unit/test_media.cpp: an error event ends in Error with the reason
+  and one unload; a repeated event gives one Error.
+
+Verified with host tests (test_media 41/41).
+---
+ media/include/wnk/media/controller.hpp |  1 +
+ media/src/controller.cpp               | 15 ++++++++++++--
+ tests/unit/test_media.cpp              | 27 ++++++++++++++++++++++++++
+ 3 files changed, 41 insertions(+), 2 deletions(-)
+
+diff --git a/media/include/wnk/media/controller.hpp b/media/include/wnk/media/controller.hpp
+index c71cc71..414824c 100644
+--- a/media/include/wnk/media/controller.hpp
++++ b/media/include/wnk/media/controller.hpp
+@@ -6,6 +6,7 @@
+ //                  │          │              │  │
+ //                  │          └─seek─► Seeking ┘  └─(source ends, buffer drained)─► Ended
+ //                  └──────────────(any failure)──────────────────────────────────► Error
++//                                 (a BackendEvent::Error too: the decoder refused the stream)
+ //   any state ─stop─► Stopped
+ //
+ // A reader thread reads packets into one lane per stream (video, audio), up to max_queue_us ahead;
+diff --git a/media/src/controller.cpp b/media/src/controller.cpp
+index 08dff2e..52711d7 100644
+--- a/media/src/controller.cpp
++++ b/media/src/controller.cpp
+@@ -68,10 +68,10 @@ struct PlaybackController::Core {
+     PlayState state() const;
+     const char *backend_name() const { return backend_->name(); }  // may change at open (AutoBackend)
+ 
+-    enum class Cmd : uint8_t { Open, Play, Pause, Seek, Stop, Audio };
++    enum class Cmd : uint8_t { Open, Play, Pause, Seek, Stop, Audio, Fail };
+     struct Command {
+         Cmd cmd;
+-        std::string uri;
++        std::string uri;     // Fail: the backend's reason
+         int64_t pts_us = 0;  // Audio: the track
+         bool release = false;  // Pause: unload the decoder even if the backend can pause
+     };
+@@ -393,6 +393,10 @@ void PlaybackController::Core::on_backend_event(BackendEvent e, const std::strin
+     } else if (e == BackendEvent::ResourceLost) {
+         // Treat like a pause: the decoder must be loaded again before more packets go in.
+         post({Cmd::Pause, {}, 0, true});
++    } else if (e == BackendEvent::Error) {
++        // The decoder refused the stream (Starfish: no decoder resource after a 20 s Load). Carrying
++        // on would show the controls over a black picture for good.
++        post({Cmd::Fail, detail.empty() ? std::string("backend error") : detail, 0});
+     }
+ }
+ 
+@@ -481,6 +485,13 @@ bool PlaybackController::Core::apply(const Command &c) {
+             set_state(PlayState::Stopped);
+             return false;
+         case Cmd::Audio: do_audio(static_cast<int>(c.pts_us)); break;
++        case Cmd::Fail: {
++            const PlayState s = state();
++            if (s != PlayState::Idle && s != PlayState::Error && s != PlayState::Stopped) {
++                fail(std::string(backend_->name()) + ": " + c.uri);
++            }
++            break;
++        }
+     }
+     return true;
+ }
+diff --git a/tests/unit/test_media.cpp b/tests/unit/test_media.cpp
+index c5d1b42..ef8b797 100644
+--- a/tests/unit/test_media.cpp
++++ b/tests/unit/test_media.cpp
+@@ -654,6 +654,33 @@ TEST("controller: losing the decoder resource pauses and unloads, even with a pa
+     r.pc->stop();
+ }
+ 
++TEST("controller: a backend error ends playback in Error with the reason and gives the decoder back") {
++    Rig r(std::make_unique<ScriptedSource>(20000000), /*can_pause=*/true);
++    r.pc->open("x");
++    REQUIRE(r.wait([&] { return r.log->video.load() > 10; }));
++    r.backend->emit(BackendEvent::Error);  // Starfish: "Resource Allocation Error" after a 20 s Load
++    REQUIRE(r.wait_state(PlayState::Error));
++    CHECK_EQ(r.log->unloads.load(), 1);
++    CHECK(r.pc->snapshot().error.find("test") != std::string::npos);
++    CHECK(r.pc->stop());
++}
++
++TEST("controller: a backend error the pipeline repeats fails playback once") {
++    Rig r(std::make_unique<ScriptedSource>(20000000));
++    r.pc->open("x");
++    REQUIRE(r.wait([&] { return r.log->video.load() > 10; }));
++    r.backend->emit(BackendEvent::Error);
++    r.backend->emit(BackendEvent::Error);  // the pipeline repeats it: one failure
++    REQUIRE(r.wait_state(PlayState::Error));
++    std::this_thread::sleep_for(50ms);
++    r.main.drain();
++    int errors = 0;
++    for (const auto &t : r.transitions) errors += t.second == PlayState::Error;
++    CHECK_EQ(errors, 1);
++    CHECK_EQ(r.log->unloads.load(), 1);
++    r.pc->stop();
++}
++
+ TEST("controller: audio-only media plays and ends on the audio clock; Ended + play restarts") {
+     Rig r(std::make_unique<ScriptedSource>(1000000, /*video=*/false, /*audio=*/true));
+     const auto t0 = std::chrono::steady_clock::now();
+-- 
+2.43.0
+
+
+From 2981d49b15f59b6a6599cb175aab71c6b5cdf740 Mon Sep 17 00:00:00 2001
+From: sostk <poudelswastik@gmail.com>
+Date: Sat, 24 Oct 2026 22:25:49 +1100
+Subject: [PATCH 3/3] Report a seek's target as the position until it reaches
+ the screen
+
+The position comes from the backend's presented PTS when it has one, so
+after a seek it keeps showing the old content: through the source seek,
+priming, and on Starfish the backlog the splice plays first. Apps that
+draw the time from the snapshot showed the old time for a second or
+more after every fast-forward press (cloudstream-webos-native issue 18:
+"the timestamp does not update simultaneously").
+
+- media/src/controller.cpp: seek() records the target and a generation
+  under the lock; snapshot() reports the target as the position while it
+  is set. The playback thread clears it once a packet of that seek went
+  in, or with a splicing backend once splice_settled() says it is on
+  screen; only for the newest seek, so one still held or queued keeps
+  showing. Opening, stopping, failing and a seek with nothing open clear
+  it.
+- media/include/wnk/media/controller.hpp: documents the position rule.
+- tests/unit/test_media.cpp: the target shows at once and, splicing,
+  until settled; of two seeks the newer one shows; a seek before open
+  leaves nothing behind.
+
+Verified with host tests (tools/test.sh host-debug 111/111) and
+ThreadSanitizer (unit.media under host-tsan).
+---
+ media/include/wnk/media/controller.hpp |  4 ++-
+ media/src/controller.cpp               | 38 +++++++++++++++++++-
+ tests/unit/test_media.cpp              | 48 ++++++++++++++++++++++++++
+ 3 files changed, 88 insertions(+), 2 deletions(-)
+
+diff --git a/media/include/wnk/media/controller.hpp b/media/include/wnk/media/controller.hpp
+index 414824c..64b5687 100644
+--- a/media/include/wnk/media/controller.hpp
++++ b/media/include/wnk/media/controller.hpp
+@@ -35,7 +35,9 @@
+ //
+ // Position: from the backend if it reports one, else estimated on a clock started at the first
+ // packet after load/seek (offset by that packet's PTS) and frozen while paused. The estimate is
+-// marked as such in the snapshot.
++// marked as such in the snapshot. While a seek is on its way (asked for, and its content not yet
++// fed or, with a splicing backend, not yet on screen) the position is its target, so a time shown
++// from it follows the remote at once instead of the picture that is still being replaced.
+ //
+ // Subtitles: every cue the source decodes goes into a SubtitleStore (all subtitle tracks, kept across
+ // seeks) instead of the backend; subtitles_now() answers what the selected track shows at the
+diff --git a/media/src/controller.cpp b/media/src/controller.cpp
+index 52711d7..a988f17 100644
+--- a/media/src/controller.cpp
++++ b/media/src/controller.cpp
+@@ -74,6 +74,7 @@ struct PlaybackController::Core {
+         std::string uri;     // Fail: the backend's reason
+         int64_t pts_us = 0;  // Audio: the track
+         bool release = false;  // Pause: unload the decoder even if the backend can pause
++        uint64_t seek_gen = 0;  // Seek: seek_gen_ when it was asked for
+     };
+     // Names the call the playback thread is blocked in, for stop()'s warning when it never returns.
+     struct Busy {
+@@ -97,6 +98,7 @@ struct PlaybackController::Core {
+     bool load_backend();
+     void unload_backend();
+     bool pause_backend(bool paused);
++    void seek_landed();  // a seek's content reached the decoder (and, splicing, the screen)
+     void feed_one();
+     bool prime_done() const;  // playback thread
+     void clear_lanes();
+@@ -166,6 +168,12 @@ struct PlaybackController::Core {
+     bool joined_ = false;
+     std::atomic<const char *> busy_in_{nullptr};
+     std::atomic<int64_t> busy_since_ms_{0};
++    // The latest seek asked for until its content is on screen (guarded by mutex_): snapshot()
++    // reports it as the position meanwhile. seek_gen_ counts seek() calls; the playback thread
++    // clears the target only for the newest one.
++    int64_t seek_target_us_ = kNoTime;
++    uint64_t seek_gen_ = 0;
++    uint64_t applied_seek_gen_ = 0;  // playback thread
+ };
+ 
+ PlaybackController::Core::Core(std::unique_ptr<MediaSource> source, std::unique_ptr<MediaBackend> backend,
+@@ -264,7 +272,13 @@ void PlaybackController::Core::seek(int64_t pts_us) {
+     pts_us = std::max<int64_t>(0, pts_us);
+     last_seek_request_ms_ = steady_ms();
+     last_seek_target_us_ = pts_us;
+-    post({Cmd::Seek, {}, pts_us});
++    uint64_t gen;
++    {
++        std::lock_guard<std::mutex> lock(mutex_);
++        seek_target_us_ = pts_us;
++        gen = ++seek_gen_;
++    }
++    post({Cmd::Seek, {}, pts_us, false, gen});
+ }
+ 
+ void PlaybackController::Core::seek_relative(int64_t delta_us) {
+@@ -315,6 +329,10 @@ PlaybackSnapshot PlaybackController::Core::snapshot() const {
+         s.position_us = estimated_position();
+         s.position_estimated = true;
+     }
++    if (seek_target_us_ != kNoTime) {
++        s.position_us = seek_target_us_;
++        s.position_estimated = true;
++    }
+     return s;
+ }
+ 
+@@ -381,6 +399,7 @@ void PlaybackController::Core::fail(const std::string &error) {
+     {
+         std::lock_guard<std::mutex> lock(mutex_);
+         clock_running_ = false;
++        seek_target_us_ = kNoTime;
+     }
+     set_state(PlayState::Error, error);
+ }
+@@ -469,6 +488,7 @@ bool PlaybackController::Core::apply(const Command &c) {
+             break;
+         case Cmd::Seek:
+             last_seek_applied_ms_ = steady_ms();
++            applied_seek_gen_ = c.seek_gen;
+             do_seek(c.pts_us);
+             break;
+         case Cmd::Stop:
+@@ -481,6 +501,7 @@ bool PlaybackController::Core::apply(const Command &c) {
+             {
+                 std::lock_guard<std::mutex> lock(mutex_);
+                 clock_running_ = false;
++                seek_target_us_ = kNoTime;
+             }
+             set_state(PlayState::Stopped);
+             return false;
+@@ -515,6 +536,7 @@ void PlaybackController::Core::do_open(const std::string &uri) {
+         clock_running_ = false;
+         clock_base_us_ = kNoTime;
+         paused_at_us_ = kNoTime;
++        if (applied_seek_gen_ == seek_gen_) seek_target_us_ = kNoTime;  // else a seek queued behind the open keeps it
+     }
+     subtitles_.clear();
+     set_state(PlayState::Opening);
+@@ -593,11 +615,24 @@ bool PlaybackController::Core::pause_backend(bool paused) {
+     return backend_->pause(paused);
+ }
+ 
++// Called after a packet went in. Without splicing, the first packet after the seek is the new
++// content; a splicing backend shows what it held first, so the target stays until it is on screen.
++void PlaybackController::Core::seek_landed() {
++    {
++        std::lock_guard<std::mutex> lock(mutex_);
++        if (seek_target_us_ == kNoTime || applied_seek_gen_ != seek_gen_) return;
++    }
++    if (backend_->caps().seek_splices && !backend_->splice_settled()) return;
++    std::lock_guard<std::mutex> lock(mutex_);
++    if (applied_seek_gen_ == seek_gen_) seek_target_us_ = kNoTime;
++}
+ 
+ void PlaybackController::Core::do_seek(int64_t pts_us) {
+     const PlayState before = state();
+     if (before == PlayState::Idle || before == PlayState::Opening || before == PlayState::Error ||
+         before == PlayState::Stopped) {
++        std::lock_guard<std::mutex> lock(mutex_);
++        if (applied_seek_gen_ == seek_gen_) seek_target_us_ = kNoTime;  // nothing to seek: no target to show
+         return;
+     }
+     const bool resume = before != PlayState::Paused;
+@@ -1138,6 +1173,7 @@ void PlaybackController::Core::feed_one() {
+                 lanes_[lane].pop_front();
+             }
+             reader_cv_.notify_all();  // room again
++            seek_landed();
+             break;
+         }
+         case MediaBackend::Feed::Full: {
+diff --git a/tests/unit/test_media.cpp b/tests/unit/test_media.cpp
+index ef8b797..243ab23 100644
+--- a/tests/unit/test_media.cpp
++++ b/tests/unit/test_media.cpp
+@@ -921,6 +921,54 @@ TEST("controller: a splicing backend's new content waits for the backlog; the sh
+     r.pc->stop();
+ }
+ 
++TEST("controller: a seek on its way is the position at once; a splicing backend keeps it until on screen") {
++    PlaybackOptions o;
++    o.max_lead_us = 600000;
++    Rig r(std::make_unique<ScriptedSource>(60000000), /*can_pause=*/true, o);
++    r.log->pause_drains = true;
++    r.log->seek_splices = true;
++    r.pc->open("x");
++    REQUIRE(r.wait([&] { return r.log->video.load() > 30; }));
++    r.log->splice_settled = false;  // the new content is not on screen yet
++    r.pc->seek(30000000);
++    CHECK_EQ(r.pc->snapshot().position_us, 30000000);  // before the playback thread has even seen it
++    REQUIRE(r.wait([&] { return r.log->flushes.load() == 1 && r.log->first_video_after_flush.load() != kNoTime; }));
++    std::this_thread::sleep_for(200ms);
++    CHECK_EQ(r.pc->snapshot().position_us, 30000000);  // fed, but the backlog still plays
++    r.log->splice_settled = true;
++    REQUIRE(r.wait([&] { return r.pc->snapshot().position_us != 30000000; }));
++    const int64_t base = r.log->first_video_after_flush.load();
++    REQUIRE(r.wait([&] { return r.pc->snapshot().position_us > base + 100000; }, 3000ms));
++    CHECK(r.pc->snapshot().position_us < 32000000);
++    r.pc->stop();
++}
++
++TEST("controller: of two seeks the position shows the newer target until its own content is fed") {
++    PlaybackOptions o;
++    o.seek_settle = std::chrono::milliseconds(0);
++    Rig r(std::make_unique<ScriptedSource>(60000000), /*can_pause=*/false, o);
++    r.pc->open("x");
++    REQUIRE(r.wait([&] { return r.log->video.load() > 30; }));
++    r.pc->seek(20000000);
++    r.pc->seek(40000000);
++    CHECK_EQ(r.pc->snapshot().position_us, 40000000);
++    REQUIRE(r.wait([&] { return r.log->first_video_after_flush.load() >= 40000000; }));
++    REQUIRE(r.wait([&] { return r.pc->snapshot().position_us != 40000000; }, 3000ms));
++    CHECK(r.pc->snapshot().position_us >= 40000000);
++    CHECK(r.pc->snapshot().position_us < 42000000);
++    r.pc->stop();
++}
++
++TEST("controller: a seek before anything is open leaves no target behind") {
++    Rig r(std::make_unique<ScriptedSource>(20000000));
++    r.pc->seek(5000000);
++    REQUIRE(r.wait([&] { return r.pc->snapshot().position_us == kNoTime; }));
++    r.pc->open("x");
++    REQUIRE(r.wait([&] { return r.log->video.load() > 10; }));
++    CHECK(r.pc->snapshot().position_us < 5000000);
++    r.pc->stop();
++}
++
+ TEST("adts: headers from AudioSpecificConfig for AAC-LC and HE-AAC; refusals") {
+     uint8_t h[7];
+     // AAC-LC 48 kHz stereo: object 2, index 3, channels 2 -> 0x11 0x90
+-- 
+2.43.0
+
