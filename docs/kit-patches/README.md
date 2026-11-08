@@ -1,7 +1,7 @@
 # Kit patches
 
-The project builds on Native App Kit `7fe49ab791a33fd135aec349c0929c959d99c146` (upstream `main`,
-2026-10-24) **without local changes**. `external/webos-native-app-kit` is a plain checkout of that commit,
+The project builds on Native App Kit `312f3652dd945356e1676e14ee18c7d719eefb9a` (upstream `main`,
+2026-10-30) **without local changes**. `external/webos-native-app-kit` is a plain checkout of that commit,
 made or checked by `tools/fetch-kit.sh` (which holds the pinned commit; CI uses it too):
 
     tools/fetch-kit.sh
@@ -37,3 +37,9 @@ and upstream as a pull request.
 | Live DASH follows new segments by the clock between MPD updates and keeps every rendition of the bitrate ladder listed (stalls with dropped frames, and switches landing up to 30 s in the past, on the LG C1; test stream: `tools/abr-test/`, project PR #7) | https://github.com/Native-Webos/webos-native-app-kit/pull/9 | `937da4f` |
 | The controller reads the source on its own thread, so a waiting read no longer starves the decoder; it pauses the backend and the clock to buffer when a stream runs dry instead of letting Starfish drop every late frame; live DASH joins behind the edge of every rendition by its longest segments (stutter and dropped frames on live DASH, LG C1) | https://github.com/Native-Webos/webos-native-app-kit/pull/10 | `5b07b2d` |
 | The controller fails on a backend error instead of playing on over a black picture, names the call a stuck playback thread is in, and reports a seek's target as the position until it is on screen (issues #15 and #18; [0007](0007-backend-error-seek-target.md)) | https://github.com/Native-Webos/webos-native-app-kit/pull/12 | `7fe49ab` |
+
+Kit `312f365` (moved to 2026-11-09 for issue #15) also brings the kit's own ACB video plane for webOS
+3.x/4.x (`ffb2c20`), a 10 s bound on a Starfish `Unload` that never returns (`6f42268`), the reopen on
+the fallback decoder when Starfish refuses a stream before its first picture (`211fe95`) and the
+bounded NDL unload (`a2fe228`). The app's own generated `LegacyStarfishBackend` and `legacy_acb.cpp`
+were removed then; see [legacy playback](../legacy-playback.md).

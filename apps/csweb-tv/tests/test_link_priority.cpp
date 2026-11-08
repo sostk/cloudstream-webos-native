@@ -199,3 +199,10 @@ TEST("video_quality_detection") {
     CHECK(!q_unknown.is_1080p);
     CHECK(!q_unknown.is_720p);
 }
+
+TEST("a decoder still held by an earlier player is told apart from a failed link") {
+    CHECK(decoder_still_held("starfish load failed: release_timeout: the previous player's Unload has not returned for 10000 ms"));
+    CHECK(decoder_still_held("NDL load failed: release_timeout: NDL_DirectMediaUnload has not returned for 10000 ms"));
+    CHECK(!decoder_still_held("starfish: pipeline refused the stream (601)"));
+    CHECK(!decoder_still_held(""));
+}

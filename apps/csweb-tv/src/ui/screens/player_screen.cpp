@@ -255,12 +255,16 @@ void PlayerScreen::start_best(Ui &ui) {
     if (!loading_) no_links(links_.empty() ? "No links found" : "No playable links found");
 }
 
-void PlayerScreen::no_links(const std::string &why) {
+void PlayerScreen::no_links(const std::string &why, bool link_hints) {
     stop_playback();
     loading_view_->set_visible(true);
     skip_->set_visible(false);
-    loading_text_->set_text(why + (load_error_.empty() ? std::string() : " (" + load_error_ + ")") +
-                            (links_.empty() ? "" : ". Torrent links cannot be played on the TV."));
+    if (!link_hints) {
+        loading_text_->set_text(why + ".");
+    } else {
+        loading_text_->set_text(why + (load_error_.empty() ? std::string() : " (" + load_error_ + ")") +
+                                (links_.empty() ? "" : ". Torrent links cannot be played on the TV."));
+    }
     if (Ui *u = this->ui()) u->set_clear_color(std::nullopt);
 }
 
@@ -324,6 +328,9 @@ void PlayerScreen::play_link(Ui &ui, size_t index) {
             ended_pending_ = true;
         } else if (to == PlayState::Paused) {
             save_position();
+        } else if (to == PlayState::Error && player::decoder_still_held(snap.error)) {
+            // Not this link's fault, and no other link can get the decoder either (issue #15).
+            held_pending_ = true;
         } else if (to == PlayState::Error) {
             // The next link is opened from update(): this controller must not be destroyed inside
             // its own callback.
@@ -475,6 +482,13 @@ bool PlayerScreen::on_action(Ui &ui, const wnk::input::ActionEvent &e) {
 
 void PlayerScreen::update(Ui &ui, float dt) {
     Screen::update(ui, dt);
+    if (held_pending_) {
+        held_pending_ = false;
+        next_pending_ = false;
+        WNK_LOGW(kCat, "player: the TV's video decoder is still held by an earlier video");
+        no_links("The TV's video decoder is still held by the previous video. Close the app and open it "
+                 "again to play", false);
+    }
     if (next_pending_) {
         next_pending_ = false;
         next_mirror(ui);

@@ -11,20 +11,12 @@
 #include "wnk/media/ffmpeg_source.hpp"
 #include "wnk/media/ndl_backend.hpp"
 #include "wnk/media/pacing_backend.hpp"
-#if defined(CSWEB_LEGACY) && defined(CSWEB_LEGACY_VIDEO_PLANE)
-#include "player/legacy_starfish_backend.hpp"
-#else
 #include "wnk/media/starfish_backend.hpp"
-#endif
 #include "wnk/platform/process.hpp"
 
 namespace csweb::player {
 
 using namespace wnk::media;
-#if defined(CSWEB_LEGACY) && defined(CSWEB_LEGACY_VIDEO_PLANE)
-using StarfishBackend = wnk::media::LegacyStarfishBackend;
-using StarfishOptions = wnk::media::LegacyStarfishOptions;
-#endif
 
 std::unique_ptr<MediaBackend> make_backend(const DeviceMediaCaps &device) {
     if (!wnk::platform::kIsWebOS) return std::make_unique<PacingBackend>();
@@ -32,8 +24,8 @@ std::unique_ptr<MediaBackend> make_backend(const DeviceMediaCaps &device) {
     const bool starfish = StarfishBackend::available(&why_sf);
     const bool ndl = NdlBackend::available(&why_ndl);
     StarfishOptions so;
-#if defined(CSWEB_LEGACY) && defined(CSWEB_LEGACY_VIDEO_PLANE)
-    so.app_id = "org.csweb.tv.legacy";  // the id this package registers with SAM
+#if defined(CSWEB_LEGACY)
+    so.app_id = "org.csweb.tv.legacy";  // the ACB video plane (webOS 3/4) names the id SAM knows
 #endif
     so.dolby_vision = device.dolby_vision == true;
     so.atmos = device.dolby_atmos == true;
@@ -42,6 +34,10 @@ std::unique_ptr<MediaBackend> make_backend(const DeviceMediaCaps &device) {
     if (ndl) return std::make_unique<NdlBackend>();
     WNK_LOGW("csweb", "no media backend (Starfish: %s; NDL: %s)", why_sf.c_str(), why_ndl.c_str());
     return std::make_unique<PacingBackend>();
+}
+
+bool decoder_still_held(const std::string &error) {
+    return error.find("release_timeout:") != std::string::npos;
 }
 
 bool is_adaptive(const runtime::Link &link) {

@@ -17,6 +17,7 @@
 #include "wnk/net/http.hpp"
 
 #include <memory>
+#include <string>
 
 namespace csweb::player {
 
@@ -26,5 +27,9 @@ std::unique_ptr<wnk::media::MediaSource> make_source(const runtime::Link &link, 
 bool is_adaptive(const runtime::Link &link);
 // The content key of a ClearKey link (normalised to hex), empty otherwise.
 wnk::media::ContentKeys clearkey_keys(const runtime::Link &link);
+// The playback error says the previous player still holds the decoder: the kit's backend gave up
+// waiting for an Unload that never returned ("release_timeout: ..."). Every other link would fail
+// the same way until the app restarts, so the player stops trying them.
+bool decoder_still_held(const std::string &error);
 
 }  // namespace csweb::player
