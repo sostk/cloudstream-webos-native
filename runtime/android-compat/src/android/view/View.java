@@ -14,6 +14,17 @@ public class View {
         void onClick(View v);
     }
 
+    /** Types only (implemented by AndroidX Fragment and its view factory); never called headless. */
+    public interface OnCreateContextMenuListener {
+        void onCreateContextMenu(ContextMenu menu, View v, ContextMenu.ContextMenuInfo menuInfo);
+    }
+
+    public interface OnAttachStateChangeListener {
+        void onViewAttachedToWindow(View v);
+
+        void onViewDetachedFromWindow(View v);
+    }
+
     private final Context context;
     private int id = NO_ID;
     private Object tag;
@@ -22,6 +33,22 @@ public class View {
     private ViewParent parent;
     private ViewGroup.LayoutParams layoutParams;
     private OnClickListener onClick;
+    private int paddingLeft, paddingTop, paddingRight, paddingBottom;
+    private android.graphics.drawable.Drawable background;
+    private CharSequence contentDescription;
+    private boolean clickable, focusable;
+    private float alpha = 1f;
+    private static final java.util.concurrent.atomic.AtomicInteger NEXT_ID = new java.util.concurrent.atomic.AtomicInteger(1);
+
+    /** View.generateViewId: ids from 1 that never collide with aapt's (0x7f......) resource ids. */
+    public static int generateViewId() {
+        for (;;) {
+            int result = NEXT_ID.get();
+            int next = result + 1;
+            if (next > 0x00FFFFFF) next = 1;
+            if (NEXT_ID.compareAndSet(result, next)) return result;
+        }
+    }
 
     public View(Context context) {
         this.context = context;
@@ -88,7 +115,79 @@ public class View {
         layoutParams = params;
     }
 
-    public void setPadding(int left, int top, int right, int bottom) {}
+    public void setPadding(int left, int top, int right, int bottom) {
+        paddingLeft = left;
+        paddingTop = top;
+        paddingRight = right;
+        paddingBottom = bottom;
+    }
+
+    public void setPaddingRelative(int start, int top, int end, int bottom) {
+        setPadding(start, top, end, bottom);
+    }
+
+    public int getPaddingLeft() { return paddingLeft; }
+    public int getPaddingTop() { return paddingTop; }
+    public int getPaddingRight() { return paddingRight; }
+    public int getPaddingBottom() { return paddingBottom; }
+    public int getPaddingStart() { return paddingLeft; }
+    public int getPaddingEnd() { return paddingRight; }
+
+    /** Kept, never drawn: the native app styles dialogs itself. */
+    public void setBackground(android.graphics.drawable.Drawable background) {
+        this.background = background;
+    }
+
+    public android.graphics.drawable.Drawable getBackground() {
+        return background;
+    }
+
+    public void setBackgroundColor(int color) {}
+
+    public void setBackgroundResource(int resid) {}
+
+    /** The accessibility label; the dialog protocol uses it as the text of image buttons. */
+    public void setContentDescription(CharSequence description) {
+        contentDescription = description;
+    }
+
+    public CharSequence getContentDescription() {
+        return contentDescription;
+    }
+
+    public void setClickable(boolean clickable) {
+        this.clickable = clickable;
+    }
+
+    public boolean isClickable() {
+        return clickable || onClick != null;
+    }
+
+    public void setFocusable(boolean focusable) {
+        this.focusable = focusable;
+    }
+
+    public boolean isFocusable() {
+        return focusable;
+    }
+
+    public void setAlpha(float alpha) {
+        this.alpha = alpha;
+    }
+
+    public float getAlpha() {
+        return alpha;
+    }
+
+    public void setScaleX(float scale) {}
+
+    public void setScaleY(float scale) {}
+
+    public void setElevation(float elevation) {}
+
+    public void requestLayout() {}
+
+    public void invalidate() {}
 
     public void setMinimumHeight(int minHeight) {}
 

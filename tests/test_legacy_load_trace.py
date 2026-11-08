@@ -47,8 +47,10 @@ class LegacyLoadTraceTest(unittest.TestCase):
             TRACE.instrument(SOURCE, out)
             main = (out / PACKAGE / "Main.java").read_text()
             service = (out / PACKAGE / "Service.java").read_text()
+            # The context comes before the plugin's constructor: a plugin that needs an Activity reads
+            # CommonActivity.activity there (docs/runtime/dialog-protocol.md).
             stages = ["classloader", "manifest.open", "manifest.read", "manifest.parse", "class.resolve",
-                      "class.initialize_and_construct", "context", "resources", "plugin.load", "settings.inspect"]
+                      "context", "class.initialize_and_construct", "resources", "plugin.load", "settings.inspect"]
             previous = -1
             for stage in stages:
                 begin = main.index(f'legacyLoadStage("{stage}.begin")')

@@ -280,8 +280,18 @@ public class Resources {
         return new ByteArrayInputStream(file(id));
     }
 
+    /**
+     * A drawable resource as a named placeholder: there is no graphics stack, and plugin UI only hands
+     * drawables to views (backgrounds, icons), which the native app does not draw. Unknown ids and
+     * resources of other types throw NotFoundException, as on Android.
+     */
     public android.graphics.drawable.Drawable getDrawable(int id) {
-        throw org.csweb.compat.Unsupported.of("Resources.getDrawable (no graphics stack)");
+        require(id);
+        String type = table.typeName(id);
+        if (!"drawable".equals(type) && !"mipmap".equals(type) && !"color".equals(type)) {
+            throw new NotFoundException("Resource ID #0x" + Integer.toHexString(id) + " is a " + type + ", not a drawable");
+        }
+        return new org.csweb.compat.res.ResourceDrawable(type + "/" + table.entryName(id));
     }
 
     public android.graphics.drawable.Drawable getDrawable(int id, Theme theme) {

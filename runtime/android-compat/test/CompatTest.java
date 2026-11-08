@@ -96,13 +96,18 @@ public final class CompatTest {
             threw = true;
         }
         eq("unknown id throws NotFoundException", true, threw);
+        // No graphics stack: a drawable resource is a named placeholder that views keep (PlayFy's
+        // settings set one as a background and as its save button's icon).
+        android.graphics.drawable.Drawable icon = r.getDrawable(r.getIdentifier("icon", "drawable", pkg));
+        eq("drawable placeholder", "drawable/icon",
+                icon instanceof org.csweb.compat.res.ResourceDrawable ? ((org.csweb.compat.res.ResourceDrawable) icon).name() : null);
         threw = false;
         try {
-            r.getDrawable(r.getIdentifier("icon", "drawable", pkg));
-        } catch (org.csweb.compat.Unsupported e) {
+            r.getDrawable(r.getIdentifier("settings", "layout", pkg));
+        } catch (android.content.res.Resources.NotFoundException e) {
             threw = true;
         }
-        eq("drawable reported unsupported", true, threw);
+        eq("a layout is not a drawable", true, threw);
 
         android.content.res.XmlResourceParser x = r.getLayout(r.getIdentifier("settings", "layout", pkg));
         String android = "http://schemas.android.com/apk/res/android";
@@ -306,12 +311,93 @@ public final class CompatTest {
     public static void main(String[] args) throws Exception {
         resources();
         ui();
+        settingsSheetViews();
         base64();
         uri();
         json();
         prefs();
         System.out.println("compat tests: " + passed + " passed, " + failed + " failed");
         if (failed > 0) System.exit(1);
+    }
+
+    /**
+     * The views and dialogs of a settings screen built like CNCVerse PlayFy's (issue #21): a RelativeLayout
+     * row per choice with a CheckBox and a clickable TextView that toggles it, an ImageButton that saves,
+     * and an AppCompat AlertDialog after saving. Run after ui(), which installs the UI host.
+     */
+    static void settingsSheetViews() throws Exception {
+        File dir = Files.createTempDirectory("csweb-sheet").toFile();
+        HeadlessContext ctx = new HeadlessContext(dir, "test.app");
+        int a = android.view.View.generateViewId(), b = android.view.View.generateViewId();
+        eq("generated ids positive and distinct", true, a > 0 && b > 0 && a != b && b < 0x01000000);
+
+        android.widget.LinearLayout root = new android.widget.LinearLayout(ctx);
+        root.setOrientation(android.widget.LinearLayout.VERTICAL);
+        android.widget.ImageButton save = new android.widget.ImageButton(ctx);
+        save.setContentDescription("Save");
+        save.setPadding(1, 2, 3, 4);
+        eq("padding kept", 2 + 4, save.getPaddingTop() + save.getPaddingBottom());
+        android.widget.RelativeLayout row = new android.widget.RelativeLayout(ctx);
+        android.widget.CheckBox box = new android.widget.CheckBox(ctx);
+        box.setId(a);
+        android.widget.TextView label = new android.widget.TextView(ctx);
+        label.setText("Sports");
+        android.widget.RelativeLayout.LayoutParams lp = new android.widget.RelativeLayout.LayoutParams(-2, -2);
+        lp.addRule(android.widget.RelativeLayout.END_OF, a);
+        lp.addRule(android.widget.RelativeLayout.CENTER_VERTICAL);
+        lp.setMarginStart(16);
+        label.setLayoutParams(lp);
+        eq("relative rule kept", a, lp.getRule(android.widget.RelativeLayout.END_OF));
+        eq("rule TRUE", android.widget.RelativeLayout.TRUE, lp.getRule(android.widget.RelativeLayout.CENTER_VERTICAL));
+        label.setOnClickListener(v -> box.setChecked(!box.isChecked()));
+        row.addView(box);
+        row.addView(label);
+        final java.util.List<String> enabled = new java.util.ArrayList<>();
+        box.setOnCheckedChangeListener((c, on) -> {
+            if (on) enabled.add("Sports"); else enabled.remove("Sports");
+        });
+        final boolean[] saved = {false};
+        save.setOnClickListener(v -> saved[0] = true);
+        root.addView(save);
+        root.addView(row);
+        android.app.Dialog sheet = new android.app.Dialog(ctx);
+        sheet.setContentView(root);
+        sheet.show();
+        String desc = MiniJson.encode(org.csweb.compat.ui.DialogProtocol.describe(sheet));
+        eq("sheet described", "{\"title\":null,\"cancelable\":true,\"view\":{\"key\":\"v0\",\"type\":\"column\",\"children\":["
+                + "{\"key\":\"v1\",\"type\":\"button\",\"text\":\"Save\"},"
+                + "{\"key\":\"v2\",\"type\":\"column\",\"children\":["
+                + "{\"key\":\"id" + a + "\",\"type\":\"checkbox\",\"text\":\"Sports\",\"checked\":false}]}]}}", desc);
+        org.csweb.compat.ui.DialogProtocol.answer(sheet, answer("{\"fields\":{\"id" + a + "\":true},\"click\":\"v1\"}"));
+        eq("checkbox answered through its listener", java.util.Collections.singletonList("Sports"), enabled);
+        eq("image button clicked", true, saved[0]);
+        org.csweb.compat.ui.DialogProtocol.answer(sheet, answer("{\"click\":\"v4\"}"));  // the label toggles the box
+        eq("clickable label clicked", false, box.isChecked());
+        sheet.dismiss();
+
+        // AppCompat's builder: same API and types as androidx, shown through the dialog protocol.
+        final String[] pressed = {null};
+        androidx.appcompat.app.AlertDialog restart = new androidx.appcompat.app.AlertDialog.Builder(ctx)
+                .setTitle("Restart Required").setMessage("Changes have been saved.")
+                .setPositiveButton("Yes", (d, w) -> pressed[0] = "yes")
+                .setNegativeButton("No", (d, w) -> pressed[0] = "no")
+                .show();
+        eq("appcompat dialog shown", true, restart.isShowing());
+        eq("appcompat dialog described", "{\"title\":\"Restart Required\",\"cancelable\":true,\"message\":\"Changes have been saved.\","
+                + "\"buttons\":{\"positive\":\"Yes\",\"negative\":\"No\"}}",
+                MiniJson.encode(org.csweb.compat.ui.DialogProtocol.describe(restart)));
+        org.csweb.compat.ui.DialogProtocol.answer(restart, answer("{\"button\":\"negative\"}"));
+        eq("appcompat button", "no", pressed[0]);
+
+        android.os.Bundle args = new android.os.Bundle();
+        args.putInt("n", 3);
+        args.putString("s", "x");
+        eq("bundle int", 3, args.getInt("n"));
+        eq("bundle wrong type gives default", 7, args.getInt("s", 7));
+        eq("bundle missing string default", "d", args.getString("none", "d"));
+
+        // No launcher: a plugin's "restart the app" finds no intent and so never calls Runtime.exit.
+        eq("no launch intent", null, ctx.getPackageManager().getLaunchIntentForPackage(ctx.getPackageName()));
     }
 
     static void uri() {
