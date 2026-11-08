@@ -7,6 +7,7 @@
 #include "ui/widgets/pill_button.hpp"
 #include "ui/widgets/top_bar.hpp"
 #include "ui/widgets/type_chips.hpp"
+#include "wnk/log.hpp"
 
 #include <algorithm>
 
@@ -17,6 +18,7 @@ using namespace wnk::ui;
 namespace {
 constexpr const char *kHistoryKey = settings::kSearchHistory;
 constexpr size_t kHistoryMax = 10;
+constexpr const char *kCat = "csweb";
 const wnk::Size kCell{theme::kPosterW, theme::kPosterH + 56};
 }  // namespace
 
@@ -32,6 +34,14 @@ SearchScreen::SearchScreen(app::Services &s) : Screen("Search"), s_(s) {
     field_->name = "search.field";
     field_->set_max_length(120);
     field_->set_on_submit([this](Ui &ui, const std::string &q) { search(ui, q); });
+    // Issue #22: closing LG's keyboard with Back keeps the text without searching, so the search
+    // must also be reachable without the keyboard's Enter.
+    auto &actions = left.add<wnk::ui::Row>(14);
+    auto &go = actions.add<PillButton>("Search", "search", PillButton::Style::Primary,
+                                       [this](Ui &ui) { search(ui, field_->text()); }, 60);
+    go.name = "search.go";
+    status_ = &left.add<Label>("");
+    status_->set_muted(true).set_max_lines(3);
     chips_ = &left.add<TypeChips>(3, [this](Ui &ui, const std::set<std::string> &types) {
         settings::put_set(*s_.settings, settings::kSearchTypes, types);
         if (!query_.empty()) search(ui, query_);
@@ -39,7 +49,12 @@ SearchScreen::SearchScreen(app::Services &s) : Screen("Search"), s_(s) {
     chips_->set_width(Dim::fill());
     refresh_chips();
     plugins_sub_ = s_.plugins_changed.subscribe([this] { refresh_chips(); });
-    left.add<Label>("Recent", TextRole::Small).set_muted(true).set_padding({0, 20, 0, 0});
+    history_head_ = &left.add<wnk::ui::Row>(14);
+    history_head_->set_padding({0, 20, 0, 0});
+    history_head_->add<Label>("Recent", TextRole::Small).set_muted(true);
+    auto &clear = history_head_->add<PillButton>("Clear", "trash", PillButton::Style::Glass,
+                                                 [this](Ui &ui) { clear_history(ui); }, 48);
+    clear.name = "search.history.clear";
     history_ = &left.add<wnk::ui::Row>(10);
     show_history();
 
@@ -48,8 +63,8 @@ SearchScreen::SearchScreen(app::Services &s) : Screen("Search"), s_(s) {
     scroll.margin = 120;
     results_ = &scroll.add<Column>(22);
     results_->set_padding({0, 0, theme::kSafeX, 60});
-    status_ = &results_->add<Label>("Results from every installed source appear here, grouped by source.");
-    status_->set_muted(true).set_max_lines(2);
+    hint_ = &results_->add<Label>("Results from every installed source appear here, grouped by source.");
+    hint_->set_muted(true).set_max_lines(2);
 
     add<TopBar>(*s_.router, app::Router::Tab::Search);
 }
@@ -86,6 +101,7 @@ void SearchScreen::show_history() {
     history_->clear_children();
     auto it = s_.settings->get_string(kHistoryKey);
     const auto list = nlohmann::json::parse(it.empty() ? "[]" : it, nullptr, false);
+    history_head_->set_visible(list.is_array() && !list.empty());
     if (!list.is_array()) return;
     size_t n = 0;
     for (const auto &q : list) {
@@ -98,19 +114,45 @@ void SearchScreen::show_history() {
     }
 }
 
+void SearchScreen::clear_history(Ui &ui) {
+    s_.settings->set(kHistoryKey, "[]");
+    show_history();
+    ui.focus(field_);  // the button just went away with the row
+    ui.toast("Search history cleared.");
+}
+
 void SearchScreen::update_status() {
+    if (query_.empty()) {
+        status_->set_text("");
+        return;
+    }
+    size_t results = 0;
+    for (const auto &g : groups_) results += g->items.size();
     std::string text;
     if (!running_.empty()) {
         std::string names;
         for (auto &kv : running_) names += (names.empty() ? "" : ", ") + kv.second;
-        text = "Still searching: " + names;
+        text = "Searching " + std::to_string(running_.size()) + " of " + std::to_string(asked_) + " sources: " + names;
+    } else if (results == 0) {
+        text = "Nothing found for “" + query_ + "”.";
+    } else {
+        text = std::to_string(results) + " results from " + std::to_string(groups_.size()) + " of " +
+               std::to_string(asked_) + (asked_ == 1 ? " source." : " sources.");
     }
     if (!failed_.empty()) {
+        // One reason for all (the runtime is down) reads better than the same reason per source.
+        bool same = true;
+        for (auto &f : failed_) same = same && f.second == failed_.front().second;
         std::string names;
-        for (auto &f : failed_) names += (names.empty() ? "" : ", ") + f;
-        text += std::string(text.empty() ? "" : "  ·  ") + "No answer from: " + names;
+        for (auto &f : failed_) names += (names.empty() ? "" : ", ") + f.first;
+        text += "  ·  No answer from " + names;
+        if (same && !failed_.front().second.empty()) text += " (" + failed_.front().second + ")";
     }
-    if (running_.empty() && groups_.empty() && !query_.empty()) text = "Nothing found for “" + query_ + "”.";
+    // Issue #22: a search that only asked some sources must say so, or it looks like it found nothing.
+    if (skipped_ > 0) {
+        text += "  ·  " + std::to_string(skipped_) + (skipped_ == 1 ? " source" : " sources") +
+                " skipped by the type and language filters";
+    }
     status_->set_text(text);
 }
 
@@ -120,6 +162,7 @@ void SearchScreen::search(Ui &, const std::string &raw) {
     if (q.empty()) return;
     cancel();
     failed_.clear();
+    hint_->set_visible(false);
     for (auto &g : groups_) {
         results_->remove_child(g->title);
         results_->remove_child(g->rail);
@@ -148,6 +191,9 @@ void SearchScreen::search(Ui &, const std::string &raw) {
 
     const auto active = settings::search_providers(s_.plugins->providers(), settings::read_filters(*s_.settings),
                                                    chips_->selected());
+    asked_ = active.size();
+    skipped_ = s_.plugins->providers().size() - std::min(active.size(), s_.plugins->providers().size());
+    WNK_LOGI(kCat, "search: %zu of %zu sources", active.size(), s_.plugins->providers().size());  // not the query
     for (const std::string &provider : active) {
         auto items = std::make_shared<std::vector<runtime::SearchResult>>();
         auto empty = std::make_shared<bool>(false);  // answered with no results (the runtime's "empty")
@@ -159,10 +205,10 @@ void SearchScreen::search(Ui &, const std::string &raw) {
                 if (ev == "result") items->push_back(runtime::parse_search_result(e));
                 else if (ev == "empty") *empty = true;
             },
-            core::guarded(life_.weak(), [this, provider, items, empty, id, q](bool ok, const std::string &) {
+            core::guarded(life_.weak(), [this, provider, items, empty, id, q](bool ok, const std::string &error) {
                 running_.erase(*id);
                 if (q != query_) return;
-                if (!ok && items->empty() && !*empty) failed_.push_back(provider);
+                if (!ok && items->empty() && !*empty) failed_.emplace_back(provider, error);
                 if (!items->empty()) {
                     auto g = std::make_unique<Group>();
                     g->provider = provider;
@@ -184,6 +230,12 @@ void SearchScreen::search(Ui &, const std::string &raw) {
                     groups_.push_back(std::move(g));
                 }
                 update_status();
+                if (running_.empty()) {
+                    size_t results = 0;
+                    for (const auto &g : groups_) results += g->items.size();
+                    WNK_LOGI(kCat, "search: done, %zu results from %zu of %zu sources, %zu failed", results,
+                             groups_.size(), asked_, failed_.size());
+                }
             }));
         if (*id != 0) running_[*id] = provider;
     }

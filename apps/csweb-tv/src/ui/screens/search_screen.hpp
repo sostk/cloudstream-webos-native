@@ -38,6 +38,7 @@ class SearchScreen : public wnk::ui::Screen {
     };
     void search(wnk::ui::Ui &ui, const std::string &query);
     void show_history();
+    void clear_history(wnk::ui::Ui &ui);
     void update_status();
     void cancel();
     void refresh_chips();
@@ -45,13 +46,17 @@ class SearchScreen : public wnk::ui::Screen {
     app::Services &s_;
     wnk::ui::TextField *field_ = nullptr;
     wnk::ui::Row *history_ = nullptr;
+    wnk::ui::Row *history_head_ = nullptr;
     TypeChips *chips_ = nullptr;
     core::Signal::Subscription plugins_sub_;
     wnk::ui::Column *results_ = nullptr;
-    wnk::ui::Label *status_ = nullptr;
+    wnk::ui::Label *status_ = nullptr;  // under the field: what the search is doing
+    wnk::ui::Label *hint_ = nullptr;    // the results column before the first search
+    size_t asked_ = 0;                   // sources asked for the current query
+    size_t skipped_ = 0;                 // sources the type chips and language filters left out
     std::vector<std::unique_ptr<Group>> groups_;
     std::map<runtime::RuntimeClient::RequestId, std::string> running_;
-    std::vector<std::string> failed_;
+    std::vector<std::pair<std::string, std::string>> failed_;  // provider, reason
     std::string query_;
     bool shown_ = false;
     wnk::async::Lifetime life_;
