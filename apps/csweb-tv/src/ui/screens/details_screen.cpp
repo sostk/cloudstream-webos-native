@@ -25,6 +25,10 @@ bool present(const std::string &s) { return !s.empty() && s != "null"; }
 
 // ---- screen -------------------------------------------------------------------------------------------
 
+namespace {
+constexpr float kActionH = 84;  // Play, Resume and the library button (issue #26: 72 read small on a TV)
+}  // namespace
+
 DetailsScreen::DetailsScreen(app::Services &s, std::string provider, runtime::SearchResult item, bool resume)
     : Screen(item.name), s_(s), provider_(std::move(provider)), item_(std::move(item)), resume_on_load_(resume) {
     name = "details";
@@ -49,21 +53,28 @@ DetailsScreen::DetailsScreen(app::Services &s, std::string provider, runtime::Se
     tags_->set_color(theme::kAccent).set_max_lines(1);
     plot_ = &head.add<Label>("");
     plot_->set_color(theme::kTextSecondary).set_font_size(theme::kLabel).set_max_lines(4);
-    status_ = &head.add<Label>("Loading…");
-    status_->set_muted(true).set_max_lines(3);
+    // Notes and errors only; while loading, the button row says so (issue #26: a small "Loading…"
+    // above a lone bookmark button looked out of place).
+    status_ = &head.add<Label>("");
+    status_->set_color(theme::kTextSecondary).set_font_size(theme::kBody).set_max_lines(3);
+    status_->set_visible(false);
 
-    auto &buttons = content_->add<wnk::ui::Row>(18);
+    auto &buttons = content_->add<wnk::ui::Row>(20);
     buttons.set_padding({0, 10, 0, 10});
+    loading_ = &buttons.add<PillButton>("Loading…", "refresh", PillButton::Style::Glass, [](Ui &) {}, kActionH);
+    loading_->set_frosted(true);
+    loading_->set_focusable(false);
+    loading_->name = "details.loading";
     play_ = &buttons.add<PillButton>("Play", "play", PillButton::Style::Primary, [this](Ui &ui) {
         const auto it = groups_.find(group_);
         play(ui, it != groups_.end() && !it->second.empty() ? &it->second.front() : nullptr);
-    }, 72);
+    }, kActionH);
     play_->name = "details.play";
     play_->set_visible(false);
-    resume_ = &buttons.add<PillButton>("Resume", "play", PillButton::Style::Primary, [this](Ui &ui) { play_resume(ui); }, 72);
+    resume_ = &buttons.add<PillButton>("Resume", "play", PillButton::Style::Primary, [this](Ui &ui) { play_resume(ui); }, kActionH);
     resume_->name = "details.resume";
     resume_->set_visible(false);
-    bookmark_ = &buttons.add<PillButton>("Add to library", "bookmark", PillButton::Style::Glass, [this](Ui &ui) { choose_list(ui); }, 72);
+    bookmark_ = &buttons.add<PillButton>("Add to library", "bookmark", PillButton::Style::Glass, [this](Ui &ui) { choose_list(ui); }, kActionH);
     bookmark_->set_frosted(true);
     bookmark_->name = "details.bookmark";
     library_sub_ = s_.library->changed.subscribe([this] { refresh_library(); });
@@ -108,7 +119,7 @@ void DetailsScreen::load(Ui &) {
     // Opened before the plugins have loaded (Continue watching, the library, a link at start): wait
     // for the provider instead of failing with "no loaded provider".
     if (s_.plugins->provider(provider_) == nullptr && s_.plugins->loading()) {
-        status_->set_text("Loading " + provider_ + "…");
+        loading_->set_text("Loading " + provider_ + "…");
         if (!waiting_plugins_) {
             waiting_plugins_ = true;
             plugins_sub_ = s_.plugins_changed.subscribe([this] {
@@ -119,7 +130,9 @@ void DetailsScreen::load(Ui &) {
         return;
     }
     if (s_.plugins->provider(provider_) == nullptr) {
+        loading_->set_visible(false);
         status_->set_text(provider_ + " is not loaded. Install or enable its plugin in Settings › Extensions.");
+        status_->set_visible(true);
         return;
     }
     auto details = std::make_shared<runtime::Details>();
@@ -140,7 +153,9 @@ void DetailsScreen::load(Ui &) {
             request_ = 0;
             if (!*got) {
                 WNK_LOGW(kCat, "details failed: %s", error.c_str());
+                loading_->set_visible(false);
                 status_->set_text(error.empty() ? "This item could not be loaded." : "Could not load: " + error);
+                status_->set_visible(true);
                 return;
             }
             if (!ok) WNK_LOGW(kCat, "details ended early: %s", error.c_str());
@@ -191,6 +206,7 @@ void DetailsScreen::show(Ui &ui) {
     const bool episodic = !groups_.empty();
     status_->set_text(d.coming_soon && !episodic && d.data_url.empty() ? "Not available yet." : "");
     status_->set_visible(!status_->text().empty());
+    loading_->set_visible(false);
     play_->set_visible(episodic || !d.data_url.empty());
 
     group_row_->clear_children();
@@ -201,7 +217,7 @@ void DetailsScreen::show(Ui &ui) {
                 const runtime::EpisodeGroup g = kv.first;
                 auto &b = group_row_->add<PillButton>(group_label(g), "", PillButton::Style::Glass, [this, g](Ui &) {
                     show_group(g, 0);
-                }, 56);
+                }, 64);
                 b.name = "details.group." + std::to_string(g.season) + g.dub;
                 b.set_frosted(true);
             }
@@ -254,7 +270,7 @@ void DetailsScreen::show_group(const runtime::EpisodeGroup &g, size_t range) {
     if (rs.size() > 1) {
         for (size_t i = 0; i < rs.size(); i++) {
             const std::string text = std::to_string(rs[i].min_episode) + "-" + std::to_string(rs[i].max_episode);
-            auto &b = range_row_->add<PillButton>(text, "", PillButton::Style::Glass, [this, g, i](Ui &) { show_group(g, i); }, 52);
+            auto &b = range_row_->add<PillButton>(text, "", PillButton::Style::Glass, [this, g, i](Ui &) { show_group(g, i); }, 64);
             b.set_frosted(true);
             b.set_selected(i == range);
             b.name = "details.range." + std::to_string(i);

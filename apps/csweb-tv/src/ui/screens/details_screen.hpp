@@ -60,6 +60,7 @@ class DetailsScreen : public wnk::ui::Screen {
     wnk::ui::Column *content_ = nullptr;
     wnk::ui::Label *title_ = nullptr, *meta_ = nullptr, *tags_ = nullptr, *plot_ = nullptr, *status_ = nullptr;
     PillButton *play_ = nullptr, *resume_ = nullptr, *bookmark_ = nullptr;
+    PillButton *loading_ = nullptr;  // stands where Play will be until the details arrive (issue #26)
     core::Signal::Subscription library_sub_;
     core::Signal::Subscription plugins_sub_;  // waiting for the provider's plugin to load
     bool waiting_plugins_ = false;
