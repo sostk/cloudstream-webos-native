@@ -7,6 +7,7 @@ libm.so.6
 libdl.so.2              # dlopen of libNDL_directmedia.so.1, libcurl.so.4 and the Luna libraries (never DT_NEEDED)
 libpthread.so.0         # playback thread, worker pool, runtime reader thread
 librt.so.1
+libgcc_s.so.1?          # WNK_DOVI (kit 312f365): unwinder for the Rust libdovi code; on every firmware 1.2-11.2 (kit fw-lib-matrix, Example D's list)
 libGLESv2.so.2          # firmware GLES2
 libSDL2-2.0.so.0        # bundled SDL-webOS, lib/ via RPATH $ORIGIN/lib
 libavformat-wnk.so.63   # bundled FFmpeg (tools/build-ffmpeg.sh), lib/; needs libz.so.1 from the firmware
