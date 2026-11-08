@@ -2,6 +2,7 @@
 #include "ui/screens/extensions_screen.hpp"
 
 #include "core/guard.hpp"
+#include "plugins/settings_support.hpp"
 #include "ui/theme/theme.hpp"
 #include "ui/widgets/pill_button.hpp"
 
@@ -282,7 +283,10 @@ void RepositoryScreen::open_settings(Ui &ui, const plugins::InstalledPlugin &p) 
                         core::guarded(life_.weak(), [this, opened, id](bool ok, const std::string &error) {
                             Ui *u = this->ui();
                             WNK_LOGI(kCat, "plugin settings ended: %s%s", ok ? "ok" : "failed: ", ok ? "" : error.c_str());
-                            if (!ok && u) u->toast("Settings: " + error, 4000);
+                            if (!ok && plugins::settings_need_activity(error)) {
+                                WNK_LOGW(kCat, "plugin settings: unsupported (needs an Android Activity/fragment)");
+                            }
+                            if (!ok && u) u->toast(plugins::settings_failure_message(error), 5000);
                             else if (!*opened && u) u->toast("This plugin has no settings.");
                             if (*opened) {
                                 s_.plugins->reload(id);

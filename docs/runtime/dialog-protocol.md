@@ -30,6 +30,17 @@ context does not see plugin resources; plugins must use their own `Resources` (t
 run on the runtime's main thread, the thread that called `openSettings`, as dialog callbacks run on the
 UI thread on Android.
 
+Example of an unsupported settings screen (issue #21): CNCVerse `PlayFyProvider` v19 (sha256
+`e6a861d7…84b7d7`, checked statically, not run) shows its settings as a Material
+`BottomSheetDialogFragment` with the inflated `res/layout/settings.xml` (playlist check boxes, an
+`ImageButton`) through `AppCompatActivity.getSupportFragmentManager()`, and asks to restart the app
+afterwards. Its `openSettings` casts the Activity it kept from `load` (null with the headless
+context) to `AppCompatActivity`, so it fails with "null cannot be cast to non-null type
+androidx.appcompat.app.AppCompatActivity". The app recognises such failures
+(`plugins::settings_need_activity`) and says the plugin's settings are an Android screen it cannot
+show yet; the plugin's providers are unaffected. Supporting them needs an Activity with a fragment
+manager and view lifecycle mapped onto this protocol.
+
 ## Messages
 
 Runtime → app, JSON lines on stdout:
