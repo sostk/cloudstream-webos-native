@@ -33,6 +33,12 @@ public abstract class Context {
         return android.content.res.Resources.getSystem();
     }
 
+    public android.content.pm.PackageManager getPackageManager() {
+        return PACKAGE_MANAGER;
+    }
+
+    private static final android.content.pm.PackageManager PACKAGE_MANAGER = new android.content.pm.PackageManager();
+
     public void startActivity(Intent intent) {
         throw org.csweb.compat.Unsupported.of("Context.startActivity");
     }

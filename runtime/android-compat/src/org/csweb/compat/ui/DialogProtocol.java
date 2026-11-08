@@ -10,6 +10,7 @@ import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.CompoundButton;
 import android.widget.EditText;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.Switch;
 import android.widget.TextView;
@@ -103,6 +104,7 @@ public final class DialogProtocol {
         return v.getId() != View.NO_ID ? "id" + v.getId() : "v" + index;
     }
 
+    @SuppressWarnings("unchecked")
     private static Map<String, Object> describeView(View v, int[] counter) {
         int index = counter[0]++;
         if (v.getVisibility() != View.VISIBLE) return null;
@@ -115,8 +117,18 @@ public final class DialogProtocol {
             m.put("type", row ? "row" : "column");
             List<Object> children = new ArrayList<>();
             for (int i = 0; i < g.getChildCount(); i++) {
-                Object c = describeView(g.getChildAt(i), counter);
-                if (c != null) children.add(c);
+                View child = g.getChildAt(i);
+                Object c = describeView(child, counter);
+                if (c == null) continue;
+                // A check box or switch without text followed by a plain label (a RelativeLayout row of
+                // CheckBox + TextView, the label toggling the box): one labelled control, as a TV shows it.
+                View next = g.getChildAt(i + 1);
+                if (child instanceof CompoundButton && isBlank(((TextView) child).getText()) && isLabel(next)) {
+                    ((Map<String, Object>) c).put("text", str(((TextView) next).getText()));
+                    counter[0]++;  // the label keeps its index, so keys stay those of index()
+                    i++;
+                }
+                children.add(c);
             }
             m.put("children", children);
         } else if (v instanceof EditText) {
@@ -135,6 +147,12 @@ public final class DialogProtocol {
         } else if (v instanceof Button) {
             m.put("type", "button");
             m.put("text", str(((TextView) v).getText()));
+        } else if (v.hasOnClickListeners()) {
+            // Clickable labels and image buttons: buttons named by their text, else their content description.
+            m.put("type", "button");
+            CharSequence text = v instanceof TextView ? ((TextView) v).getText() : null;
+            if (isBlank(text)) text = v.getContentDescription();
+            m.put("text", isBlank(text) ? (v instanceof ImageView ? "Image button" : "Button") : str(text));
         } else if (v instanceof TextView) {
             m.put("type", "label");
             m.put("text", str(((TextView) v).getText()));
@@ -142,6 +160,16 @@ public final class DialogProtocol {
             m.put("type", "space");
         }
         return m;
+    }
+
+    /** A label that may name the control before it: text only, not itself an input or a button. */
+    private static boolean isLabel(View v) {
+        return v instanceof TextView && !(v instanceof Button) && !(v instanceof EditText)
+                && v.getVisibility() == View.VISIBLE && !isBlank(((TextView) v).getText());
+    }
+
+    private static boolean isBlank(CharSequence s) {
+        return s == null || s.toString().trim().isEmpty();
     }
 
     /** InputType class and variation: text, number, phone, datetime, email, uri or password. */
@@ -187,7 +215,8 @@ public final class DialogProtocol {
         Object click = answer.get("click");
         if (click != null) {
             View v = byKey.get(String.valueOf(click));
-            if (!(v instanceof Button) || v instanceof CompoundButton) throw new IllegalArgumentException("click: no button " + click);
+            boolean button = v instanceof Button || (v != null && v.hasOnClickListeners());
+            if (!button || v instanceof CompoundButton) throw new IllegalArgumentException("click: no button " + click);
             v.performClick();
         }
         Object item = answer.get("item");

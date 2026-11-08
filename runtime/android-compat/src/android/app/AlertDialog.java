@@ -279,8 +279,13 @@ public class AlertDialog extends Dialog {
             return this;
         }
 
+        /** The dialog create() fills in; androidx.appcompat.app.AlertDialog.Builder makes its own type. */
+        protected AlertDialog newDialog(Context context) {
+            return new AlertDialog(context);
+        }
+
         public AlertDialog create() {
-            AlertDialog d = new AlertDialog(context);
+            AlertDialog d = newDialog(context);
             d.setTitle(title);
             d.message = message;
             d.view = viewLayout != 0 ? android.view.LayoutInflater.from(context).inflate(viewLayout, null) : view;
