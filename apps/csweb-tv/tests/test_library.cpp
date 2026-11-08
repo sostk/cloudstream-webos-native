@@ -98,3 +98,13 @@ TEST("local_list_sortings") {
     CHECK_EQ(static_cast<int>(ListSorting::AlphabeticalA), 5);  // CloudStream's ordinal (the stored value)
     CHECK_EQ(local_sortings().size(), size_t(6));
 }
+
+TEST("clearing continue watching keeps the saved positions (deleteAllResumeStateIds)") {
+    Library lib;
+    lib.set_view_pos_and_resume(show(), ep(1), ep(2), 600000, 1200000, 1);
+    CHECK_EQ(lib.resume_list().size(), size_t(1));
+    lib.clear_resume();
+    CHECK(lib.resume_list().empty());
+    CHECK(lib.view_pos("Prov", "data1").has_value());
+    CHECK_EQ(lib.start_position_ms("Prov", "data1"), int64_t(600000));
+}

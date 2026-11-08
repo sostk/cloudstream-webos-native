@@ -118,6 +118,7 @@ add_executable(csweb-tv
         src/main.cpp
         src/app/application.cpp
         src/app/router.cpp
+        src/ui/dialogs/clear_watch_history.cpp
         src/ui/dialogs/multi_select.cpp
         src/ui/dialogs/plugin_dialog_host.cpp
         src/ui/screens/details_screen.cpp

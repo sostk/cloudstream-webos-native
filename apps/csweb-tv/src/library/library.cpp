@@ -130,6 +130,8 @@ std::vector<Resume> Library::resume_list() const {
 
 void Library::remove_resume(const std::string &provider, const std::string &url) { resume_.erase(show_key(provider, url)); }
 
+void Library::clear_resume() { resume_.clear(); }
+
 json Library::to_json() const {
     json b = json::array(), p = json::array(), r = json::array();
     for (const auto &kv : bookmarks_) {

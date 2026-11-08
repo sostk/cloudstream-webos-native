@@ -2,6 +2,7 @@
 #include "ui/screens/settings_screen.hpp"
 
 #include "settings/preferences.hpp"
+#include "ui/dialogs/clear_watch_history.hpp"
 #include "ui/dialogs/multi_select.hpp"
 #include "ui/theme/theme.hpp"
 #include "ui/widgets/top_bar.hpp"
@@ -155,6 +156,9 @@ SettingsScreen::SettingsScreen(app::Services &s) : Screen("Settings"), s_(s) {
         st->set(settings::kSearchHistory, "[]");
         ui.toast("Search history cleared.");
     }).name = "settings.clear_history";
+    list.add<ValueRow>("Clear watch history", "Continue Watching", [this](Ui &ui) {
+        confirm_clear_watch_history(ui, s_);
+    }).name = "settings.clear_watch_history";
 
     section(list, "About");
     home_ = &list.add<Label>("");
