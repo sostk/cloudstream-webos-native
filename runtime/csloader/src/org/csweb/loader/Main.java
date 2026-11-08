@@ -196,6 +196,23 @@ public final class Main {
         }
         BasePlugin.Manifest manifest = MainAPIKt.getMapper().readValue(manifestText, BasePlugin.Manifest.class);
         Class<?> pluginClass = loader.loadClass(manifest.getPluginClassName());
+        HeadlessContext app = new HeadlessContext(data, "com.lagradost.cloudstream3");
+        appContext = app;
+        // A plugin that needs an Activity also finds it where CloudStream keeps one (CommonActivity.activity,
+        // set by MainActivity), from its constructor on: PlayFy reads its SharedPreferences through it there.
+        // Only for this load; plugins that run without an Activity keep seeing none.
+        android.app.Activity activity = activityType == null ? null : HeadlessActivities.create(activityType, app);
+        Object previousActivity = activity == null ? null : commonActivity(new java.lang.ref.WeakReference<>(activity));
+        try {
+            return loadPluginWith(file, data, hash, activityType, loader, manifest, pluginClass, app, activity);
+        } finally {
+            if (activity != null) commonActivity(previousActivity);
+        }
+    }
+
+    private static BasePlugin loadPluginWith(File file, File data, String hash, Class<?> activityType, ClassLoader loader,
+            BasePlugin.Manifest manifest, Class<?> pluginClass, HeadlessContext app, android.app.Activity activity)
+            throws Exception {
         BasePlugin plugin = (BasePlugin) pluginClass.getDeclaredConstructor().newInstance();
         plugin.setFilename(file.getAbsolutePath());
         if (activityType == null) {
@@ -203,8 +220,6 @@ public final class Main {
                     "class", manifest.getPluginClassName(), "base", plugin instanceof Plugin ? "Plugin" : "BasePlugin",
                     "requiresResources", manifest.getRequiresResources(), "sha256", hash));
         }
-        HeadlessContext app = new HeadlessContext(data, "com.lagradost.cloudstream3");
-        appContext = app;
         if (manifest.getRequiresResources()) {
             // PluginManager.loadPlugin: AssetManager by reflection, addAssetPath(<.cs3>), then Resources over it.
             try {
@@ -227,7 +242,7 @@ public final class Main {
         }
         try {
             if (plugin instanceof Plugin) {
-                ((Plugin) plugin).load(activityType == null ? app : HeadlessActivities.create(activityType, app));
+                ((Plugin) plugin).load(activity == null ? app : activity);
             } else {
                 plugin.load();
             }
@@ -249,6 +264,24 @@ public final class Main {
             emit(event("settings", "available", true));
         }
         return plugin;
+    }
+
+    /**
+     * Replaces CloudStream's CommonActivity.activity (the static WeakReference `_activity` behind
+     * CommonActivity.getActivity()) with `reference` and returns the field's previous value. The plugin
+     * keeps its own strong reference to the activity it was given.
+     */
+    private static Object commonActivity(Object reference) {
+        try {
+            java.lang.reflect.Field f = com.lagradost.cloudstream3.CommonActivity.class.getDeclaredField("_activity");
+            f.setAccessible(true);
+            Object previous = f.get(null);
+            f.set(null, reference);
+            return previous;
+        } catch (ReflectiveOperationException | LinkageError e) {
+            System.err.println("csweb: cannot set CommonActivity.activity: " + e);
+            return null;
+        }
     }
 
     /** The Activity class named by "X cannot be cast to <class>", if it is one. */

@@ -31,7 +31,10 @@ if [ "${CSWEB_LEGACY_LOAD_TRACE:-0}" = 1 ]; then
     CSLOADER_SRC=/tmp/csweb-legacy-csloader
     python3 "$P/tools/instrument-legacy-loader.py" "$P/runtime/csloader/src" "$CSLOADER_SRC"
 fi
-javac -nowarn --release 8 -d /tmp/stubcls $(find $P/runtime/compile-stubs -name '*.java')
+# The stubs may name compat types (fragment signatures use android.view.View): those come from the
+# compat sources, which -implicit:none keeps out of the stub output.
+javac -nowarn --release 8 -cp "$CP" -sourcepath $P/runtime/android-compat/src:$P/runtime/compile-stubs -implicit:none \
+    -d /tmp/stubcls $(find $P/runtime/compile-stubs -name '*.java')
 javac -Xlint:all,-options,-processing,-classfile --release 8 -cp "$CP:/tmp/stubcls" -d /tmp/cls \
     $(find $P/runtime/android-compat/src "$CSLOADER_SRC" -name '*.java')
 # host tests of the compat layer on the JVM (no Android needed for these classes)
