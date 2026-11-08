@@ -36,6 +36,10 @@ std::unique_ptr<MediaBackend> make_backend(const DeviceMediaCaps &device) {
     return std::make_unique<PacingBackend>();
 }
 
+bool decoder_still_held(const std::string &error) {
+    return error.find("release_timeout:") != std::string::npos;
+}
+
 bool is_adaptive(const runtime::Link &link) {
     return link.link_type == "M3U8" || link.link_type == "DASH" || AdaptiveSource::handles(link.url);
 }

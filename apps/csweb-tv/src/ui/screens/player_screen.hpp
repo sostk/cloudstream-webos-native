@@ -61,7 +61,7 @@ class PlayerScreen : public wnk::ui::Screen {
     void start_best(wnk::ui::Ui &ui);
     void play_link(wnk::ui::Ui &ui, size_t index);
     void next_mirror(wnk::ui::Ui &ui);
-    void no_links(const std::string &why);
+    void no_links(const std::string &why, bool link_hints = true);
     void stop_playback();
     void show_controls();
     void open_sources(wnk::ui::Ui &ui);
@@ -99,6 +99,7 @@ class PlayerScreen : public wnk::ui::Screen {
     int64_t position_us_ = wnk::media::kNoTime;
     bool resume_on_return_ = false;
     bool next_pending_ = false;  // the playing link failed: try the next one
+    bool held_pending_ = false;  // the decoder is still held by an earlier player: stop trying links
     bool ended_pending_ = false;  // the episode ended: play the next one
     bool resumed_ = false;        // the saved position was applied
     double last_save_ms_ = 0;

@@ -46,49 +46,46 @@ Missing protocol state returns NULL with an SDL error before allocating or
 touching the exported-window list. This protects window creation; older firmware
 also needs a display-control fallback to connect decoded video to the panel.
 
-## Legacy-only ACB display control
+## ACB display control (kit)
 
-With `CSWEB_LEGACY=ON` and `WNK_WEBOS=ON`, the app builds a separate
-`LegacyStarfishBackend`. `tools/make-legacy-starfish.py` reads the pinned kit's
-backend/header, verifies both SHA-256 hashes, and writes the adapted sources into
-the app's build directory. It never rewrites kit files. A kit update that changes
-these inputs requires reviewing the integration; generation fails closed.
-The main and host app builds continue to use the original kit backend. No ART,
-runtime inputs, kit pin or main-package dependencies change.
+Until 2026-11-09 the legacy package built its own `LegacyStarfishBackend`, generated at configure
+time from the pinned kit's Starfish backend by `tools/make-legacy-starfish.py`, plus
+`src/player/legacy_acb.cpp` (both in git history). Kit `312f365` does the same work itself
+(`ffb2c20`, "Play through Starfish on webOS 3.x and 4.x with an ACB video plane"): without an
+exported window it opens an ACB of type MSE from a dlopened `libAcbAPI.so.1`, binds the pipeline's
+media id at load completion, mirrors the play states, forwards the video/audio-info envelopes and
+places the picture with `setCustomDisplayWindow`. The release in `os_info.json` picks which plane is
+tried first. The app now uses the kit's `StarfishBackend` in both packages; the legacy package only
+sets `StarfishOptions::app_id` to `org.csweb.tv.legacy`.
 
-The legacy backend first tries the guarded SDL exported-window API. A returned
-window is used exactly as before, including `option.windowId`, with no ACB lookup.
-If the SDL entry points are absent or creation returns NULL, it dynamically loads
-the TV's `libAcbAPI.so.1`. The library is neither bundled nor added to DT_NEEDED.
-Required symbols and Starfish's `getMediaID()` are checked before playback. Missing
-symbols, initialization failures and media-binding failures produce a playback
-error rather than continuing with an unbound video plane.
+Reference implementations: [Kodi MediaPipelineWebOS](https://github.com/xbmc/xbmc/blob/a097d6978028aef8840b23695a57c606697f156a/xbmc/cores/VideoPlayer/MediaPipelineWebOS.cpp),
+[Moonlight SS4S ACB resource](https://github.com/mariotaku/ss4s/blob/dfba721b85420ccabf91dac65be73984bf1865f9/modules/webos/smp/src/smp_resource_acb.c),
+[PlxNative](https://github.com/GLinnik21/plx-native/blob/6ca6fbfd6a0ae8eb312f9cc497828825578f8f1d/src/starfish.c).
 
-The bridge uses the NDK `AcbAPI.h` declarations for stable functions. CI's older
-NDK declares video metadata with two arguments and omits audio metadata, so those
-two dynamic function pointers explicitly use the modern three-argument ABI from
-the published header and reference players, including real `long *taskId` output
-arguments. Tests compile with both declaration sets. It initializes an
-MSE player for `org.csweb.tv.legacy`, selects the main sink, binds Starfish's media
-ID on load completion, forwards video/audio-info callbacks verbatim, sets the
-source/destination rectangle, and mirrors loaded/playing/paused/unloaded states.
-Audio metadata, custom display rectangles and finalize are optional symbols;
-setDisplayWindow and destroy provide the required baseline.
+## Third report: black picture after a few videos (release 0.6.0)
 
-Firmware callbacks only queue data. The playback thread applies ACB work after
-Starfish `Load()` has returned, so synchronous callbacks cannot bind a half-loaded
-object or call back into Starfish from inside its Load call. The UI thread queues
-display-area changes. Each playback has a new ACB handle, released after Starfish
-unload; the kit's epoch registry drops events from retired playback instances.
+trmdi's log of 2026-10-25 (webOS 4.4.3, firmware 05.50.70, ARMv7, app 0.6.0 on kit `7fe49ab`):
 
-Reference implementations and ABI declarations reviewed:
+1. Videos 1-3 played and each `Unload` returned in 160-250 ms.
+2. Video 4 (ACB id 4) presented one frame. Unlike videos 1-3, ACB never acknowledged the
+   foreground/LOADED request (no `task=1 ... app=1 play=1` callback; a `task=1 event=-2` came 14 s
+   after Back). On Back, the playback thread stopped inside Starfish's own `Unload`: the 0007 warning
+   says `in backend unload`, and no `Unload ->` line or UnloadCompleted (type 23) ever followed.
+   The decoder stayed with that pipeline.
+3. Every later `Load` waited 20 s and got event 18 `num=601 Resource Allocation Error`. The 0007
+   change failed playback on it, but only after the following `Unload`, which took 30 s, so the
+   player showed controls over a black picture for 30 s before "This link failed".
 
-- [Kodi optional export and ACB load path](https://github.com/xbmc/xbmc/blob/a097d6978028aef8840b23695a57c606697f156a/xbmc/cores/VideoPlayer/MediaPipelineWebOS.cpp)
-  and [display placement](https://github.com/xbmc/xbmc/blob/a097d6978028aef8840b23695a57c606697f156a/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/RendererStarfish.cpp).
-- [Moonlight SS4S ACB resource](https://github.com/mariotaku/ss4s/blob/dfba721b85420ccabf91dac65be73984bf1865f9/modules/webos/smp/src/smp_resource_acb.c).
-- [PlxNative display-path resolution and ACB ABI notes](https://github.com/GLinnik21/plx-native/blob/6ca6fbfd6a0ae8eb312f9cc497828825578f8f1d/src/starfish.c).
-- [webOS SDK-compatible ACB declarations](https://github.com/webosbrew/webos-userland/blob/00a5f8721e15d5c10030b99b2f3e73e0c527bcce/include/appswitching-control-block/AcbAPI.h)
-  and [Starfish declarations/event numbers](https://github.com/webosbrew/webos-userland/blob/00a5f8721e15d5c10030b99b2f3e73e0c527bcce/include/starfish-media-pipeline/StarfishMediaAPIs.h).
+With kit `312f365`: the `Unload` runs on a release worker with a 10 s deadline, so the playback
+thread and Back no longer wait on it. The next load waits for that release until its own deadline
+and then fails at once with `release_timeout: ...` instead of a 20 s Load and a 601. The player
+treats that error as "the decoder is still held" (`player::decoder_still_held`): it does not mark
+the link failed or try the other links (they would fail the same way), and says to close and reopen
+the app, which ends the process holding the decoder. A 601 or other refusal before the first
+picture is first retried on the fallback decoder (NDL, where the firmware has the v2 API).
+
+Still open: why ACB did not acknowledge video 4 and `Unload` never returned. The next tester log
+should show whether the kit's ACB sequence avoids it.
 
 ## Validation and next TV test
 
@@ -102,20 +99,15 @@ the actual app hook, checks the guard runs before configure, and verifies the
 main and host modes leave SDL unchanged. It runs where CMake is available (CI);
 this local environment lacks CMake, so only that integration test is skipped locally.
 
-`tests/test_legacy_acb.py` compiles the generated backend against fake firmware
-libraries. It covers early/delayed callbacks, media and metadata binding, display
-placement, pause/resume, repeated playback, stale callbacks, missing libraries and
-symbols, initialization/load/binding failures, optional functions, and absence of
-link-time ACB/playerAPIs dependencies. The exported-window case works without ACB
-or getMediaID. A separate CMake test checks main/host opt-out and builds the legacy
-target where CMake is available.
+The ACB plane and the bounded release are tested in the kit (`unit.starfish`,
+`unit.starfish_release` against a fake `libplayerAPIs.so.1` whose Unload can hang).
 
 After installing the updated legacy package, test video, audio, aspect ratio,
 pause/resume, seeking, returning to browsing and playing a second video. Collect
 events.log, runtime.log and a fresh crash.log if generated. On the older firmware,
-expect `[legacy-acb] display path ACB: initialized`, then `bind`, `state LOADED`,
-`video metadata`, `display`, and playing state messages, followed by Starfish's
-`first frame presented`. Return codes and callbacks are diagnostic evidence;
+expect the kit's Starfish ACB messages (initialised, media id bound, LOADED, video info,
+display window, play states), followed by `first frame presented`; when switching videos, each
+`Unload` should return well within the 10 s release deadline. Return codes and callbacks are diagnostic evidence;
 only an actual picture and audio confirm playback. ACB presence alone does not
 prove the developer-mode jail grants media access. No root or firmware changes
 are part of this fix. Playback on the tester's TV remains unverified.
