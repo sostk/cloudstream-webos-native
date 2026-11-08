@@ -8,7 +8,7 @@
 using namespace csweb::plugins;
 
 TEST("an Activity cast in openSettings is an unsupported settings screen") {
-    // CNCVerse PlayFy v19 (issue #21).
+    // PlayFy v19's error before the runtime could show bottom sheets (issue #21).
     CHECK(settings_need_activity("null cannot be cast to non-null type androidx.appcompat.app.AppCompatActivity"));
     CHECK(settings_need_activity("org.csweb.compat.HeadlessContext cannot be cast to androidx.fragment.app.FragmentActivity"));
     CHECK(settings_need_activity("org.csweb.compat.HeadlessContext cannot be cast to com.lagradost.cloudstream3.MainActivity"));
