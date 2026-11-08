@@ -29,3 +29,9 @@ runs:
         tar -xzf ~/ndk.tar.gz -C ~/webos-ndk
         (cd ~/webos-ndk/arm-webos-linux-gnueabi_sdk-buildroot && ./relocate-sdk.sh)
         echo "WEBOS_NDK=$HOME/webos-ndk/arm-webos-linux-gnueabi_sdk-buildroot" >> "$GITHUB_ENV"
+
+    # The kit builds libdovi (Rust, cmake/LibDovi.cmake) for armv7-unknown-linux-gnueabi with the NDK's
+    # gcc as linker. The runner has cargo and rustup but not that target's standard library.
+    - name: Add the Rust target for libdovi
+      shell: bash
+      run: rustup target add armv7-unknown-linux-gnueabi
