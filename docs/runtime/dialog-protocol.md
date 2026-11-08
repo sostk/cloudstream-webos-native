@@ -17,10 +17,15 @@ unchanged; only the Android framework classes underneath it are headless.
 |---|---|
 | `AlertDialog.Builder`: title, message, view (`setView(View)` or a layout id), positive/negative/neutral buttons, `setItems`, `setSingleChoiceItems`, `setMultiChoiceItems`, `setCancelable`, cancel/dismiss listeners | described and answered |
 | `Dialog.setContentView`, `dialog.getButton(…).setOnClickListener` (dialog stays open, as on Android) | supported |
-| Layouts from the plugin's resources via `LayoutInflater.inflate(resources.getLayout(id), …)` | framework widgets only: `LinearLayout`, `FrameLayout`, `ScrollView`, `TextView`, `EditText`, `Button`, `CheckBox`, `Switch`, `View`/`Space`; `<merge>` as root, `<requestFocus>` |
+| Layouts from the plugin's resources via `LayoutInflater.inflate(resources.getLayout(id), …)` | framework widgets only: `LinearLayout`, `FrameLayout`, `RelativeLayout`, `ScrollView`, `TextView`, `EditText`, `Button`, `CheckBox`, `Switch`, `ImageView`, `ImageButton`, `View`/`Space`; `<merge>` as root, `<requestFocus>` |
 | Views built in code (`EditText(ctx)`, `LinearLayout(ctx).addView(…)`) | same widgets |
+| Clickable views that are not buttons (a `TextView` or `ImageButton` with an `OnClickListener`) | described as buttons, named by their text or `contentDescription` |
+| A `CheckBox`/`Switch` without text followed by a plain `TextView` (a row of box and label) | one control with the label's text |
+| `androidx.appcompat.app.AlertDialog.Builder` | as the framework builder (the runtime's own class replaces the APK's, which needs a window) |
+| Material `BottomSheetDialogFragment` subclasses shown with `show(activity.getSupportFragmentManager(), tag)` | `onCreate`, `onCreateView`, `onViewCreated`, then the view as a dialog; `dismiss()` closes it (see below) |
+| `Resources.getDrawable` / `ResourcesCompat.getDrawable` | a named placeholder that views keep; nothing is drawn |
 | `Toast.makeText(…).show()` | `toast` event |
-| Custom view classes, AndroidX/Material views, `<include>`, `<fragment>`, `DialogFragment`, `BottomSheetDialog`, `PreferenceFragment`, drawables | reported `unsupported` (named API) |
+| Custom view classes, other AndroidX/Material views, `<include>`, `<fragment>`, other `DialogFragment`s and fragment transactions, `BottomSheetDialog` on its own, `PreferenceFragment` | reported `unsupported` (named API) or failing with the Android error, which the app shows as "an Android screen CSWeb TV cannot show yet" when it names an Activity type |
 
 Layout and styling attributes (sizes, margins, colours, fonts) are ignored: the app lays dialogs out
 for a TV. As on Android, `LayoutInflater.from(context).inflate(<plugin layout id>)` with CloudStream's
@@ -30,16 +35,40 @@ context does not see plugin resources; plugins must use their own `Resources` (t
 run on the runtime's main thread, the thread that called `openSettings`, as dialog callbacks run on the
 UI thread on Android.
 
-Example of an unsupported settings screen (issue #21): CNCVerse `PlayFyProvider` v19 (sha256
-`e6a861d7…84b7d7`, checked statically, not run) shows its settings as a Material
-`BottomSheetDialogFragment` with the inflated `res/layout/settings.xml` (playlist check boxes, an
-`ImageButton`) through `AppCompatActivity.getSupportFragmentManager()`, and asks to restart the app
-afterwards. Its `openSettings` casts the Activity it kept from `load` (null with the headless
-context) to `AppCompatActivity`, so it fails with "null cannot be cast to non-null type
-androidx.appcompat.app.AppCompatActivity". The app recognises such failures
-(`plugins::settings_need_activity`) and says the plugin's settings are an Android screen it cannot
-show yet; the plugin's providers are unaffected. Supporting them needs an Activity with a fragment
-manager and view lifecycle mapped onto this protocol.
+### Settings as a Material bottom sheet (issue #21)
+
+Some plugins build their settings as an AndroidX fragment: CNCVerse `PlayFyProvider` v19 (sha256
+`e6a861d7…84b7d7`) subclasses Material's `BottomSheetDialogFragment`, inflates
+`res/layout/settings.xml` (a `RelativeLayout` header with an `ImageButton` "Save settings", a list of
+playlist rows, each a `RelativeLayout` with a `CheckBox` and a clickable `TextView`), saves the choice
+to `SharedPreferences` from `CommonActivity.activity`, and then asks to restart the app. Its
+`openSettings` uses the `AppCompatActivity` it was given in `load`. What makes that work:
+
+- CloudStream's APK has AndroidX `Fragment`/`DialogFragment`/`FragmentManager` but not Material's
+  `BottomSheetDialogFragment` (R8 removed it). The runtime ships its own
+  (`com.google.android.material.bottomsheet.BottomSheetDialogFragment`, extending the APK's
+  `DialogFragment`). Its `show()` runs `onCreate(null)`, `onCreateView(LayoutInflater, null, null)` and
+  `onViewCreated(view, null)` and shows the view in a framework `Dialog`; `getContext()` is the activity;
+  `dismiss()` closes the dialog. No transactions, back stack, child fragments, saved state or lifecycle
+  observers: `getActivity()` and `getView()` stay null.
+- A headless `FragmentActivity` (created without its constructors, `HeadlessActivities`) gets a fragment
+  host whose `getSupportFragmentManager()` is a `HeadlessFragmentManager` carrying the activity.
+- For a plugin that needs an Activity, `CommonActivity.activity` is that headless activity while the plugin
+  is constructed and loaded (CloudStream's MainActivity sets it on Android), so
+  `getActivity()?.getSharedPreferences(…)` works and the choice is kept in the plugin data.
+- `Context.getPackageManager().getLaunchIntentForPackage()` returns null (there is no launcher), so a
+  plugin's "restart the app" (`startActivity` + `Runtime.exit(0)`) is skipped and never ends the
+  runtime; the app reloads the plugin when its settings close instead.
+- Framework types the AndroidX classes link against: `ComponentCallbacks`,
+  `View.OnCreateContextMenuListener`, `View.OnAttachStateChangeListener`, `LayoutInflater.Factory2`,
+  `ContextMenu`, `Menu` (types only) and a small `android.os.Bundle`.
+
+Evidence (host runtime, x86_64, 2026-11-09): `--op settings` describes the sheet ("PlayFy Settings",
+a "Save settings" button, 37 labelled check boxes); answering `{"fields":{<JIO TV>:true},"click":"save_btn"}`
+shows "Restart Required" (Yes/No) and writes `shared_prefs/PlayFy.json` = `{"JIO TV (IND)":true}`;
+`--op load-only` then registers "📺 JIO TV (IND)". In the host app (Xvfb, scripted keys): the gear
+opens the sheet, a box ticked and saved, Yes, the plugin is reloaded with "📺 News", and after a restart
+the restored plugin data loads it again. Not yet run on a TV.
 
 ## Messages
 
