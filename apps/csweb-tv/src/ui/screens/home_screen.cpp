@@ -3,6 +3,7 @@
 
 #include "core/guard.hpp"
 #include "settings/preferences.hpp"
+#include "ui/dialogs/clear_watch_history.hpp"
 #include "ui/theme/theme.hpp"
 #include "ui/widgets/art.hpp"
 #include "ui/widgets/pill_button.hpp"
@@ -73,8 +74,16 @@ HomeScreen::HomeScreen(app::Services &s) : Screen("Home"), s_(s) {
     state_button_->name = "home.state.action";
     state_button_->set_visible(false);
 
-    resume_title_ = &content_->add<Label>("Continue watching");
-    resume_title_->set_bold(true).set_font_size(theme::kHeadline);
+    resume_title_ = &content_->add<wnk::ui::Row>(20);
+    resume_title_->add<Label>("Continue watching").set_bold(true).set_font_size(theme::kHeadline);
+    auto &clear_resume = resume_title_->add<PillButton>("Clear history", "trash", PillButton::Style::Glass,
+                                                        [this](Ui &ui) {
+        // The row goes away with its button: keep focus near it, not on the profile button.
+        confirm_clear_watch_history(ui, s_, [this](Ui &u) {
+            u.focus(hero_->visible() ? static_cast<View *>(hero_play_) : static_cast<View *>(top_->current_tab()));
+        });
+    }, 48);
+    clear_resume.name = "home.resume.clear";
     resume_rail_ = &content_->add<CollectionView>(Axis::Horizontal, 1, kStillCell, 28);
     resume_rail_->set_width(Dim::fill());
     resume_rail_->set_height(Dim::fixed(kStillCell.h + 40));

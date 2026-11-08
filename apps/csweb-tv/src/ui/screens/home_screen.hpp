@@ -90,7 +90,7 @@ class HomeScreen : public wnk::ui::Screen {
     PillButton *state_button_ = nullptr;
     StateAction state_action_ = StateAction::None;
     wnk::ui::Column *rows_box_ = nullptr;
-    wnk::ui::Label *resume_title_ = nullptr;
+    wnk::ui::Row *resume_title_ = nullptr;  // the title and CloudStream's Clear history button
     wnk::ui::CollectionView *resume_rail_ = nullptr;
     std::vector<library::Resume> resume_;
     core::Signal::Subscription library_sub_;

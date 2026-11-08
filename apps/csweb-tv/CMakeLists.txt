@@ -61,7 +61,8 @@ add_library(csweb_core STATIC
         src/runtime/provider_test.cpp
         src/runtime/runtime_client.cpp
         src/runtime/runtime_launcher.cpp
-        src/runtime/runtime_types.cpp)
+        src/runtime/runtime_types.cpp
+        src/search/suggestions.cpp)
 target_include_directories(csweb_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_include_directories(csweb_core SYSTEM PUBLIC "${PROJECT_SOURCE_DIR}/third_party")
 target_link_libraries(csweb_core PUBLIC wnk_storage wnk_logging wnk_net wnk_async Threads::Threads)
@@ -71,7 +72,7 @@ endif ()
 
 # ---- tests (host) -----------------------------------------------------------------------------------
 if (WNK_BUILD_TESTS)
-    foreach (t sha256 zip_check repository runtime_types plugin_store runtime_client episode_groups redact deep_link library dir_snapshot preferences provider_test profiles http_url scrub)
+    foreach (t sha256 zip_check repository runtime_types plugin_store runtime_client episode_groups redact deep_link library dir_snapshot preferences provider_test profiles http_url scrub suggestions)
         add_executable(csweb_test_${t} tests/test_${t}.cpp)
         target_include_directories(csweb_test_${t} PRIVATE "${PROJECT_SOURCE_DIR}/tests/unit")
         target_compile_definitions(csweb_test_${t} PRIVATE CSWEB_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
@@ -118,6 +119,7 @@ add_executable(csweb-tv
         src/main.cpp
         src/app/application.cpp
         src/app/router.cpp
+        src/ui/dialogs/clear_watch_history.cpp
         src/ui/dialogs/multi_select.cpp
         src/ui/dialogs/plugin_dialog_host.cpp
         src/ui/screens/details_screen.cpp

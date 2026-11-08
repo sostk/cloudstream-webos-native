@@ -28,6 +28,7 @@ inline constexpr const char *kProviderLangs = "provider_lang_key";
 inline constexpr const char *kAllLanguages = "universal";  // AllLanguagesName
 inline constexpr const char *kPreferMediaTypes = "prefer_media_type_key_2";
 inline constexpr const char *kSearchTypes = "search_pref_tags";
+inline constexpr const char *kSearchSuggestions = "search_suggestions_enabled";  // on by default
 inline constexpr const char *kHomeTypes = "home_pref_homepage";
 inline constexpr const char *kQualityPref = "quality_pref_key";
 inline constexpr const char *kAutoplayNext = "autoplay_next_key";

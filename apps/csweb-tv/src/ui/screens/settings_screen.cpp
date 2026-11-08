@@ -2,6 +2,7 @@
 #include "ui/screens/settings_screen.hpp"
 
 #include "settings/preferences.hpp"
+#include "ui/dialogs/clear_watch_history.hpp"
 #include "ui/dialogs/multi_select.hpp"
 #include "ui/theme/theme.hpp"
 #include "ui/widgets/top_bar.hpp"
@@ -155,6 +156,13 @@ SettingsScreen::SettingsScreen(app::Services &s) : Screen("Settings"), s_(s) {
         st->set(settings::kSearchHistory, "[]");
         ui.toast("Search history cleared.");
     }).name = "settings.clear_history";
+    // SettingsUIScreen: "Search Suggestions — Show search suggestions while typing", on by default.
+    list.add<Toggle>("Search suggestions while typing", st->get_bool(settings::kSearchSuggestions, true),
+                     [st](Ui &, bool on) { st->set(settings::kSearchSuggestions, on); })
+        .name = "settings.search_suggestions";
+    list.add<ValueRow>("Clear watch history", "Continue Watching", [this](Ui &ui) {
+        confirm_clear_watch_history(ui, s_);
+    }).name = "settings.clear_watch_history";
 
     section(list, "About");
     home_ = &list.add<Label>("");

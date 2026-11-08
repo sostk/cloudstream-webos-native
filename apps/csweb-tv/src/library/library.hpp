@@ -78,6 +78,7 @@ class Library {
     std::optional<Resume> resume(const std::string &provider, const std::string &url) const;
     std::vector<Resume> resume_list() const;  // most recent first (getResumeWatching)
     void remove_resume(const std::string &provider, const std::string &url);
+    void clear_resume();  // DataStoreHelper.deleteAllResumeStateIds: positions are kept
 
     nlohmann::json to_json() const;
     static Library from_json(const nlohmann::json &j);
