@@ -42,6 +42,22 @@ public abstract class ViewGroup extends View implements ViewParent {
             rightMargin = right;
             bottomMargin = bottom;
         }
+
+        public void setMarginStart(int start) {
+            leftMargin = start;
+        }
+
+        public void setMarginEnd(int end) {
+            rightMargin = end;
+        }
+
+        public int getMarginStart() {
+            return leftMargin;
+        }
+
+        public int getMarginEnd() {
+            return rightMargin;
+        }
     }
 
     private final List<View> children = new ArrayList<>();

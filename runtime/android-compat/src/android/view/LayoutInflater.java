@@ -11,7 +11,10 @@ import android.widget.CheckBox;
 import android.widget.CompoundButton;
 import android.widget.EditText;
 import android.widget.FrameLayout;
+import android.widget.ImageButton;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.RelativeLayout;
 import android.widget.ScrollView;
 import android.widget.Switch;
 import android.widget.TextView;
@@ -30,8 +33,17 @@ import java.util.Set;
 public class LayoutInflater {
     private static final String ANDROID = "http://schemas.android.com/apk/res/android";
     private static final Set<String> VIEWS = new HashSet<>(Arrays.asList(
-            "View", "Space", "LinearLayout", "FrameLayout", "ScrollView", "TextView", "EditText", "Button",
-            "CheckBox", "Switch"));
+            "View", "Space", "LinearLayout", "FrameLayout", "RelativeLayout", "ScrollView", "TextView", "EditText",
+            "Button", "CheckBox", "Switch", "ImageView", "ImageButton"));
+
+    /** Types only: AndroidX's FragmentManager builds a Factory2 for fragment tags; nothing installs one here. */
+    public interface Factory {
+        View onCreateView(String name, Context context, android.util.AttributeSet attrs);
+    }
+
+    public interface Factory2 extends Factory {
+        View onCreateView(View parent, String name, Context context, android.util.AttributeSet attrs);
+    }
 
     private final Context context;
 
@@ -136,6 +148,9 @@ public class LayoutInflater {
         switch (simple) {
             case "LinearLayout": v = new LinearLayout(context); break;
             case "FrameLayout": v = new FrameLayout(context); break;
+            case "RelativeLayout": v = new RelativeLayout(context); break;
+            case "ImageView": v = new ImageView(context); break;
+            case "ImageButton": v = new ImageButton(context); break;
             case "ScrollView": v = new ScrollView(context); break;
             case "TextView": v = new TextView(context); break;
             case "EditText": v = new EditText(context); break;
@@ -165,6 +180,9 @@ public class LayoutInflater {
             }
             case "text":
                 if (v instanceof TextView) ((TextView) v).setText(text(parser, i));
+                break;
+            case "contentDescription":
+                v.setContentDescription(text(parser, i));
                 break;
             case "hint":
                 if (v instanceof TextView) ((TextView) v).setHint(text(parser, i));

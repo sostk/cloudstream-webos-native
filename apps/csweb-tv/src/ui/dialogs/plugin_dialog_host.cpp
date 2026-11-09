@@ -93,7 +93,11 @@ void PluginDialogHost::show(Ui &ui, const json &d) {
             }, 60);
         }
     }
-    scroll.set_height(Dim::fixed(560));
+    // A fixed-height scroll area only for content: a plain message dialog (PlayFy's "Restart Required")
+    // would otherwise show 560 empty pixels above its buttons.
+    const bool has_content = !body.children().empty();
+    scroll.set_height(Dim::fixed(has_content ? 560 : 0));
+    scroll.set_visible(has_content);
     // The plugin's buttons answer, then close. Not Dialog::add_button: it dismisses before its handler
     // runs, and a dismissal not preceded by an answer is a cancel.
     if (auto b = d.find("buttons"); b != d.end() && b->is_object()) {
