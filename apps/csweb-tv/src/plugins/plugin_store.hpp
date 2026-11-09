@@ -48,6 +48,10 @@ class PluginStore {
     // value; returns the path, or empty with `error`.
     std::string materialize(const InstalledPlugin &p, const std::string &dir, std::string *error);
 
+    // plugins/load_hints.hpp as JSON text ("{}" when none or unreadable).
+    std::string load_hints();
+    bool save_load_hints(const std::string &json_text, std::string *error);
+
  private:
     bool save_index(const std::vector<InstalledPlugin> &list, std::string *error);
     wnk::storage::KeyValueStore &kv_;

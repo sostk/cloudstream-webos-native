@@ -38,7 +38,7 @@ class LegacyLoadTraceTest(unittest.TestCase):
                 modified = modified.replace("        legacyInitializeMath();\n", "")
                 modified = modified.replace(
                     "BasePlugin.Manifest manifest = legacyManifest(manifestText);",
-                    "BasePlugin.Manifest manifest = MainAPIKt.getMapper().readValue(manifestText, BasePlugin.Manifest.class);")
+                    "BasePlugin.Manifest manifest = Manifests.read(manifestText);")
                 self.assertEqual(re.sub(r'\s+', '', modified), re.sub(r'\s+', '', original.decode()))
 
     def test_stages_are_ordered_and_no_signal_or_stack_dump_is_added(self):

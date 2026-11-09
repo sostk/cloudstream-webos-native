@@ -14,6 +14,7 @@
 // dispatcher and are dropped if the manager is gone (Lifetime).
 #pragma once
 
+#include "plugins/load_hints.hpp"
 #include "plugins/plugin_store.hpp"
 #include "plugins/repository.hpp"
 #include "runtime/runtime_client.hpp"
@@ -41,6 +42,7 @@ class PluginManager {
         wnk::storage::KeyValueStore *kv = nullptr;      // may be null (store unavailable)
         runtime::RuntimeClient *runtime = nullptr;
         std::string plugin_dir;                         // tmpfs directory the runtime reads plugins from
+        std::function<std::string()> home_provider;     // the Home source; its plugin loads first
     };
 
     explicit PluginManager(Deps deps);
@@ -85,6 +87,10 @@ class PluginManager {
     void fetch(const std::string &url, size_t max_bytes, int max_redirects,
                std::function<void(wnk::net::HttpResponse)> done);
     void load_plugin(const InstalledPlugin &p);
+    void send_load(const InstalledPlugin &p, const std::string &path, const std::string &error);
+    void load_in_order(std::shared_ptr<std::vector<InstalledPlugin>> list, size_t index);
+    void load_all();
+    void save_hints();
     void unload_plugin(const std::string &id, std::function<void()> then);
     void changed();
 
@@ -96,6 +102,8 @@ class PluginManager {
     std::vector<runtime::Provider> providers_;
     std::map<std::string, std::string> load_errors_;
     int pending_loads_ = 0;
+    LoadHints hints_;
+    bool hints_dirty_ = false;
     bool started_ = false;
     bool runtime_ready_ = false;
     wnk::async::Lifetime life_;

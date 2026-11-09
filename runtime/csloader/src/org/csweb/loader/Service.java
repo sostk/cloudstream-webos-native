@@ -58,11 +58,17 @@ final class Service {
         UiHost.install(new Main.LoaderUi());
         Main.answers = Service::nextAnswer;
         Main.initApp();
+        int loadWorkers = Integer.parseInt(args.getOrDefault("load-workers", "3"));
         ExecutorService admin = Executors.newSingleThreadExecutor(daemon("csweb-admin"));
         ExecutorService ops = Executors.newFixedThreadPool(workers, daemon("csweb-op"));
+        // Plugins load in parallel, as CloudStream's PluginManager does (amap): one slow plugin (its own
+        // network requests in load()) no longer holds up the others.
+        ExecutorService loads = Executors.newFixedThreadPool(loadWorkers, daemon("csweb-load"));
         ScheduledExecutorService timers = Executors.newSingleThreadScheduledExecutor(daemon("csweb-timer"));
         Future<?> lastAdmin = null;
-        List<Future<?>> opsSinceAdmin = new ArrayList<>();
+        List<Future<?>> opsSinceAdmin = new ArrayList<>();    // ops and loads an unload/shutdown waits for
+        List<Future<?>> loadsSinceAdmin = new ArrayList<>();  // loads an op for a missing provider waits for
+        Manifests.warmUp();  // the Jackson mapper, built while plugins load
         Main.emit(Main.event("ready", "protocol", 1));
         BufferedReader in = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
         while (true) {
@@ -111,10 +117,23 @@ final class Service {
             }
             Running r = new Running();
             running.put(id, r);
-            boolean exclusive = op.equals("load") || op.equals("unload") || op.equals("shutdown");
-            if (exclusive) {
+            // Scheduling: unload and shutdown run alone, after everything sent before them. Loads run in
+            // parallel with each other and with operations. An operation waits for the loads sent before it
+            // only when what it names is not loaded yet (Home's request for its source must not wait for
+            // an unrelated plugin's slow load).
+            boolean exclusive = op.equals("unload") || op.equals("shutdown");
+            if (op.equals("load")) {
+                Future<?> barrier = lastAdmin;
+                Future<?> f = loads.submit(() -> {
+                    if (barrier != null) waitFor(barrier);
+                    execute(id, op, p, r);
+                });
+                opsSinceAdmin.add(f);
+                loadsSinceAdmin.add(f);
+            } else if (exclusive) {
                 List<Future<?>> before = opsSinceAdmin;
                 opsSinceAdmin = new ArrayList<>();
+                loadsSinceAdmin = new ArrayList<>();
                 lastAdmin = admin.submit(() -> {
                     for (Future<?> f : before) waitFor(f);
                     execute(id, op, p, r);
@@ -128,13 +147,39 @@ final class Service {
                 }
             } else {
                 Future<?> barrier = lastAdmin;
+                List<Future<?>> loadsBefore = new ArrayList<>(loadsSinceAdmin);
                 opsSinceAdmin.add(ops.submit(() -> {
                     if (barrier != null) waitFor(barrier);
+                    if (needsPendingLoads(op, p)) {
+                        for (Future<?> f : loadsBefore) waitFor(f);
+                    }
                     execute(id, op, p, r);
                 }));
             }
             int seconds = Integer.parseInt(p.getOrDefault("timeout", op.equals("settings") ? "600" : "120"));
             timers.schedule(() -> cancel(id, "timeout"), seconds, TimeUnit.SECONDS);
+        }
+    }
+
+    /** Whether `op` names something that may still be loading (then it waits for the loads sent before it). */
+    private static boolean needsPendingLoads(String op, Map<String, String> p) {
+        switch (op) {
+            case "providers":
+                return true;  // the complete list
+            case "settings":
+                return p.get("plugin") == null || !plugins.containsKey(new File(p.get("plugin")).getAbsolutePath());
+            case "search":
+            case "mainpage":
+            case "details":
+            case "links":
+                try {
+                    findProvider(p);
+                    return false;
+                } catch (RuntimeException notYet) {
+                    return true;
+                }
+            default:
+                return false;
         }
     }
 
@@ -176,7 +221,7 @@ final class Service {
                 return true;
             }
             case "providers":
-                for (MainAPI api : APIHolder.INSTANCE.getAllProviders()) provider(api);
+                for (MainAPI api : Main.providers()) provider(api);
                 return true;
             case "settings": {
                 BasePlugin plugin = plugins.get(new File(Main.required(p, "plugin")).getAbsolutePath());
@@ -202,18 +247,24 @@ final class Service {
         File file = new File(Main.required(p, "plugin")).getAbsoluteFile();
         String expected = Main.required(p, "sha256");
         if (plugins.containsKey(file.getPath())) throw new IllegalStateException("plugin already loaded: " + file);
+        LoadTiming.begin();
         String hash = Main.sha256(file);
+        LoadTiming.mark("integrity");
         if (!expected.equalsIgnoreCase(hash)) {
             Main.emit(Main.event("error", "stage", "integrity", "type", "HashMismatch", "message",
                     "plugin SHA-256 " + hash + " does not match the supplied " + expected));
             return false;
         }
-        BasePlugin plugin = Main.loadPlugin(file, data, hash, null);
+        BasePlugin plugin = Main.loadPlugin(file, data, hash, null, p.get("activity"));
+        Map<String, Object> timing = LoadTiming.end();
         if (plugin == null) return false;
+        Map<String, Object> timingEvent = Main.event("timing");
+        timingEvent.putAll(timing);
+        Main.emit(timingEvent);
         plugins.put(file.getPath(), plugin);
         if (!Main.answerDialogs("load")) return false;
         int n = 0;
-        for (MainAPI api : APIHolder.INSTANCE.getAllProviders()) {
+        for (MainAPI api : Main.providers()) {
             if (file.getPath().equals(api.getSourcePlugin())) {
                 provider(api);
                 n++;
@@ -248,7 +299,7 @@ final class Service {
         String plugin = p.containsKey("plugin") ? new File(p.get("plugin")).getAbsolutePath() : null;
         if (name == null && plugin == null) throw new IllegalArgumentException("request names neither a provider nor a plugin");
         List<MainAPI> found = new ArrayList<>();
-        for (MainAPI api : APIHolder.INSTANCE.getAllProviders()) {
+        for (MainAPI api : Main.providers()) {
             if ((name == null || api.getName().equals(name)) && (plugin == null || plugin.equals(api.getSourcePlugin()))) found.add(api);
         }
         if (found.size() == 1 || (name != null && !found.isEmpty())) return found.get(0);

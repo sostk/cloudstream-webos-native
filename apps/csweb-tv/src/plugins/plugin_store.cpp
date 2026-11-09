@@ -22,6 +22,7 @@ using wnk::storage::Status;
 
 constexpr const char *kReposKey = "csweb.repos.v1";
 constexpr const char *kIndexKey = "csweb.plugins.v1";
+constexpr const char *kLoadHintsKey = "csweb.loadhints.v1";
 
 std::string blob_name(const std::string &id) { return "plugin-" + id; }
 
@@ -92,6 +93,18 @@ std::vector<InstalledPlugin> PluginStore::installed() {
         if (valid_id(p.id) && core::is_sha256_hex(p.sha256)) out.push_back(std::move(p));
     }
     return out;
+}
+
+std::string PluginStore::load_hints() {
+    wnk::storage::Entry e;
+    if (kv_.get(kLoadHintsKey, &e) != Status::Ok) return "{}";
+    return e.value;
+}
+
+bool PluginStore::save_load_hints(const std::string &json_text, std::string *error) {
+    const auto res = kv_.put(kLoadHintsKey, json_text);
+    if (res.status != Status::Ok && error) *error = wnk::storage::status_name(res.status);
+    return res.status == Status::Ok;
 }
 
 bool PluginStore::save_index(const std::vector<InstalledPlugin> &list, std::string *error) {

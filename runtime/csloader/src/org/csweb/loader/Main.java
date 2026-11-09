@@ -58,6 +58,9 @@ public final class Main {
     private static final PrintStream OUT = System.out;
     static final Map<String, String> args = new LinkedHashMap<>();
     static HeadlessContext appContext;
+    /** The context each loaded plugin was given (plugins load in parallel; appContext is the last one). */
+    static final Map<BasePlugin, android.content.Context> CONTEXTS =
+            java.util.Collections.synchronizedMap(new java.util.WeakHashMap<BasePlugin, android.content.Context>());
     /** The service request the current thread works for; its id tags every event the thread emits. */
     static final ThreadLocal<String> REQUEST = new ThreadLocal<>();
     /** The coroutine of each running service request, for cancellation. */
@@ -131,7 +134,7 @@ public final class Main {
         }
 
         List<MainAPI> providers = new ArrayList<>();
-        for (MainAPI api : APIHolder.INSTANCE.getAllProviders()) {
+        for (MainAPI api : providers()) {
             if (file.getAbsolutePath().equals(api.getSourcePlugin())) providers.add(api);
         }
         for (MainAPI api : providers) {
@@ -185,7 +188,20 @@ public final class Main {
      * MainActivity on Android).
      */
     static BasePlugin loadPlugin(File file, File data, String hash, Class<?> activityType) throws Exception {
+        return loadPlugin(file, data, hash, activityType, null);
+    }
+
+    /**
+     * `activityHint`: the Activity type this build of the plugin cast its context to when it was last
+     * loaded (the app remembers it, plugins/load_hints.hpp). Used from the start when it names an Activity
+     * class, so the plugin is not loaded a first time with the application context only to fail its cast
+     * (Cricify and PlayFy fetch their configuration in load()). Anything else is ignored.
+     */
+    static BasePlugin loadPlugin(File file, File data, String hash, Class<?> activityType, String activityHint)
+            throws Exception {
+        final boolean firstPass = activityType == null;
         PathClassLoader loader = new PathClassLoader(file.getAbsolutePath(), Main.class.getClassLoader());
+        LoadTiming.mark("classloader");
         String manifestText;
         try (InputStream in = loader.getResourceAsStream("manifest.json")) {
             if (in == null) {
@@ -194,28 +210,53 @@ public final class Main {
             }
             manifestText = new String(readAll(in, 64 * 1024), StandardCharsets.UTF_8);
         }
-        BasePlugin.Manifest manifest = MainAPIKt.getMapper().readValue(manifestText, BasePlugin.Manifest.class);
+        BasePlugin.Manifest manifest = Manifests.read(manifestText);
+        LoadTiming.mark("manifest");
         Class<?> pluginClass = loader.loadClass(manifest.getPluginClassName());
+        LoadTiming.mark("class");
+        if (activityType == null && activityHint != null) {
+            activityType = activityClass(activityHint, loader);
+            if (activityType != null) {
+                emit(event("compat", "context", "headless-activity", "type", activityType.getName(),
+                        "reason", "remembered from its last load"));
+            }
+        }
         HeadlessContext app = new HeadlessContext(data, "com.lagradost.cloudstream3");
         appContext = app;
-        // A plugin that needs an Activity also finds it where CloudStream keeps one (CommonActivity.activity,
-        // set by MainActivity), from its constructor on: PlayFy reads its SharedPreferences through it there.
-        // Only for this load; plugins that run without an Activity keep seeing none.
         android.app.Activity activity = activityType == null ? null : HeadlessActivities.create(activityType, app);
-        Object previousActivity = activity == null ? null : commonActivity(new java.lang.ref.WeakReference<>(activity));
+        return loadPluginWith(file, data, hash, activityType, loader, manifest, pluginClass, app, activity, firstPass);
+    }
+
+    /** Plugin constructors: shared; a constructor that sees CommonActivity.activity runs alone (construct). */
+    private static final java.util.concurrent.locks.ReentrantReadWriteLock CONSTRUCTION =
+            new java.util.concurrent.locks.ReentrantReadWriteLock(true);
+
+    /**
+     * Constructs the plugin. A plugin that needs an Activity also finds it where CloudStream keeps one
+     * (CommonActivity.activity, set by MainActivity) while its constructor runs: PlayFy and Sportzx read
+     * their SharedPreferences through it there, and only there (their load() uses the context it is given).
+     * Plugins load in parallel (Service), so that constructor runs alone: no other plugin is constructed
+     * while CommonActivity.activity is set, and plugins without an Activity keep seeing none.
+     */
+    private static BasePlugin construct(Class<?> pluginClass, android.app.Activity activity) throws Exception {
+        java.util.concurrent.locks.Lock lock = activity == null ? CONSTRUCTION.readLock() : CONSTRUCTION.writeLock();
+        lock.lock();
+        Object previous = activity == null ? null : commonActivity(new java.lang.ref.WeakReference<>(activity));
         try {
-            return loadPluginWith(file, data, hash, activityType, loader, manifest, pluginClass, app, activity);
+            return (BasePlugin) pluginClass.getDeclaredConstructor().newInstance();
         } finally {
-            if (activity != null) commonActivity(previousActivity);
+            if (activity != null) commonActivity(previous);
+            lock.unlock();
         }
     }
 
     private static BasePlugin loadPluginWith(File file, File data, String hash, Class<?> activityType, ClassLoader loader,
-            BasePlugin.Manifest manifest, Class<?> pluginClass, HeadlessContext app, android.app.Activity activity)
-            throws Exception {
-        BasePlugin plugin = (BasePlugin) pluginClass.getDeclaredConstructor().newInstance();
+            BasePlugin.Manifest manifest, Class<?> pluginClass, HeadlessContext app, android.app.Activity activity,
+            boolean firstPass) throws Exception {
+        BasePlugin plugin = construct(pluginClass, activity);
+        LoadTiming.mark("construct");
         plugin.setFilename(file.getAbsolutePath());
-        if (activityType == null) {
+        if (firstPass) {
             emit(event("plugin", "name", manifest.getName(), "version", manifest.getVersion(),
                     "class", manifest.getPluginClassName(), "base", plugin instanceof Plugin ? "Plugin" : "BasePlugin",
                     "requiresResources", manifest.getRequiresResources(), "sha256", hash));
@@ -232,7 +273,7 @@ public final class Main {
                     ((Plugin) plugin).setResources(new android.content.res.Resources(assets,
                             app.getResources().getDisplayMetrics(), app.getResources().getConfiguration()));
                 }
-                if (activityType == null) {
+                if (firstPass) {
                     emit(event("resources", "package", assets.resourceTable() == null ? null : assets.resourceTable().packageName()));
                 }
             } catch (Throwable t) {
@@ -240,6 +281,7 @@ public final class Main {
                 return null;
             }
         }
+        LoadTiming.mark("resources");
         try {
             if (plugin instanceof Plugin) {
                 ((Plugin) plugin).load(activity == null ? app : activity);
@@ -260,6 +302,8 @@ public final class Main {
             error("lifecycle", t);
             return null;
         }
+        LoadTiming.mark("load");
+        CONTEXTS.put(plugin, activity == null ? app : activity);
         if (plugin instanceof Plugin && ((Plugin) plugin).getOpenSettings() != null) {
             emit(event("settings", "available", true));
         }
@@ -284,6 +328,16 @@ public final class Main {
         }
     }
 
+    /** The class named `name` in the plugin's class loader, if it is an Activity type; else null. */
+    private static Class<?> activityClass(String name, ClassLoader loader) {
+        try {
+            Class<?> c = Class.forName(name, false, loader);
+            return android.app.Activity.class.isAssignableFrom(c) ? c : null;
+        } catch (ClassNotFoundException | LinkageError e) {
+            return null;
+        }
+    }
+
     /** The Activity class named by "X cannot be cast to <class>", if it is one. */
     private static Class<?> activityTypeFrom(ClassCastException e, ClassLoader loader) {
         String m = String.valueOf(e.getMessage());
@@ -297,6 +351,20 @@ public final class Main {
         }
     }
 
+    /**
+     * CloudStream's provider list, copied under its lock. It is an AtomicList, which may only be iterated
+     * inside withLock (its iterator is not synchronized), and plugins add to it while others load.
+     */
+    static List<MainAPI> providers() {
+        return snapshot(APIHolder.INSTANCE.getAllProviders());
+    }
+
+    static <T> List<T> snapshot(List<T> atomicList) {
+        synchronized (atomicList) {  // AtomicList.withLock is synchronized(this)
+            return new ArrayList<>(atomicList);
+        }
+    }
+
     /** PluginManager.unloadPlugin: beforeUnload, then drop the APIs and extractors the plugin registered. */
     static void unload(BasePlugin plugin) {
         try {
@@ -306,11 +374,11 @@ public final class Main {
         }
         String source = plugin.getFilename();
         List<MainAPI> mine = new ArrayList<>();
-        for (MainAPI api : APIHolder.INSTANCE.getAllProviders()) if (source.equals(api.getSourcePlugin())) mine.add(api);
+        for (MainAPI api : providers()) if (source.equals(api.getSourcePlugin())) mine.add(api);
         for (MainAPI api : mine) APIHolder.INSTANCE.removePluginMapping(api);
         APIHolder.INSTANCE.getAllProviders().removeAll(mine);
         List<com.lagradost.cloudstream3.utils.ExtractorApi> ext = new ArrayList<>();
-        for (com.lagradost.cloudstream3.utils.ExtractorApi x : com.lagradost.cloudstream3.utils.ExtractorApiKt.getExtractorApis()) {
+        for (com.lagradost.cloudstream3.utils.ExtractorApi x : snapshot(com.lagradost.cloudstream3.utils.ExtractorApiKt.getExtractorApis())) {
             if (source.equals(x.getSourcePlugin())) ext.add(x);
         }
         com.lagradost.cloudstream3.utils.ExtractorApiKt.getExtractorApis().removeAll(ext);
@@ -331,7 +399,8 @@ public final class Main {
             return false;
         }
         try {
-            open.invoke(appContext);
+            android.content.Context context = CONTEXTS.get(plugin);
+            open.invoke(context != null ? context : appContext);
         } catch (Throwable t) {
             error("settings", t);
             return false;

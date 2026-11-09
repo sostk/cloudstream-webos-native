@@ -222,6 +222,8 @@ void HomeScreen::load(Ui &ui, const std::string &provider) {
     set_state_text("Loading " + provider + "…", StateAction::None);
     WNK_LOGI(kCat, "home: %s, %zu sections%s", provider.c_str(), p->main_page.size(), p->sequential_main_page ? " (sequential)" : "");
     const double now = ui.now_ms();
+    requested_ms_ = now;
+    first_row_logged_ = false;
     for (size_t i = 0; i < p->main_page.size(); i++) {
         const double at = p->sequential_main_page ? now + double(i) * double(p->sequential_delay_ms) : now;
         pending_.push_back({static_cast<int>(i), at});
@@ -311,6 +313,13 @@ void HomeScreen::request_section(Ui &, int index) {
             for (const List &l : *acc) items += l.items.size();
             if (!ok && items == 0) {
                 WNK_LOGW(kCat, "home: section failed: %s", error.c_str());
+            }
+            if (items > 0 && !first_row_logged_) {
+                // Start-up measurements (docs/performance.md): when Home has something to show.
+                first_row_logged_ = true;
+                if (Ui *u = this->ui()) {
+                    WNK_LOGI(kCat, "home: first row after %.0f ms", u->now_ms() - requested_ms_);
+                }
             }
             for (List &l : *acc) {
                 if (l.items.empty()) continue;

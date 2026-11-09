@@ -10,6 +10,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <chrono>
 
 namespace csweb::plugins {
 
@@ -22,6 +23,7 @@ constexpr size_t kMaxPluginBytes = 32u << 20;  // a .cs3
 struct StoreRead {
     std::vector<RepositoryData> repos;
     std::vector<InstalledPlugin> installed;
+    std::string hints;
 };
 
 struct InstallResult {
@@ -76,15 +78,16 @@ void PluginManager::start() {
     PluginStore *store = store_.get();
     wnk::async::run_then_post<StoreRead>(
         *deps_.pool, *deps_.main, life_.weak(), {},
-        [store](const wnk::async::CancellationToken &) { return StoreRead{store->repositories(), store->installed()}; },
+        [store](const wnk::async::CancellationToken &) {
+            return StoreRead{store->repositories(), store->installed(), store->load_hints()};
+        },
         [this](StoreRead r) {
             repos_ = std::move(r.repos);
             installed_ = std::move(r.installed);
+            hints_ = parse_load_hints(r.hints);
             started_ = true;
             WNK_LOGI(kCat, "plugins: %zu repositories, %zu installed", repos_.size(), installed_.size());
-            if (runtime_ready_) {
-                for (const auto &p : installed_) if (p.enabled) load_plugin(p);
-            }
+            if (runtime_ready_) load_all();
             changed();
         });
 }
@@ -94,10 +97,66 @@ void PluginManager::on_runtime_ready() {
     providers_.clear();
     load_errors_.clear();
     pending_loads_ = 0;
-    if (started_) {
-        for (const auto &p : installed_) if (p.enabled) load_plugin(p);
-    }
+    if (started_) load_all();
     changed();
+}
+
+void PluginManager::load_all() {
+    // The runtime loads one plugin at a time, in the order asked: the Home source's plugin first lets
+    // Home request its rows as soon as that one is ready.
+    const std::string home = deps_.home_provider ? deps_.home_provider() : std::string();
+    const auto order = load_order(installed_, hints_, home);
+    if (!order.empty() && order.front() != 0 && hint_for(hints_, installed_[order.front()])) {
+        WNK_LOGI(kCat, "plugins: loading %s first (Home source)", installed_[order.front()].internal_name.c_str());
+    }
+    // Each is written out, then its request sent, then the next is written: the runtime loads in the
+    // order requests arrive, and tasks of their own could finish writing in any order.
+    std::vector<InstalledPlugin> list;
+    for (size_t i : order) {
+        if (installed_[i].enabled) list.push_back(installed_[i]);
+    }
+    if (list.empty() || !store_ || !deps_.runtime) return;
+    pending_loads_ += static_cast<int>(list.size());
+    load_in_order(std::make_shared<std::vector<InstalledPlugin>>(std::move(list)), 0);
+}
+
+void PluginManager::load_in_order(std::shared_ptr<std::vector<InstalledPlugin>> list, size_t index) {
+    if (index >= list->size()) return;
+    PluginStore *store = store_.get();
+    const std::string dir = deps_.plugin_dir;
+    const InstalledPlugin p = (*list)[index];
+    using Written = std::pair<std::string, std::string>;  // path, error
+    wnk::async::run_then_post<Written>(
+        *deps_.pool, *deps_.main, life_.weak(), {},
+        [store, p, dir](const wnk::async::CancellationToken &) {
+            std::string error;
+            std::string path = store->materialize(p, dir, &error);
+            return Written{std::move(path), std::move(error)};
+        },
+        [this, list, index, p](Written w) {
+            send_load(p, w.first, w.second);
+            load_in_order(list, index + 1);
+        });
+}
+
+void PluginManager::save_hints() {
+    if (!store_ || !hints_dirty_ || pending_loads_ > 0) return;
+    hints_dirty_ = false;
+    for (auto it = hints_.begin(); it != hints_.end();) {  // uninstalled plugins
+        const bool installed = std::any_of(installed_.begin(), installed_.end(), [&](const InstalledPlugin &p) { return p.id == it->first; });
+        it = installed ? std::next(it) : hints_.erase(it);
+    }
+    PluginStore *store = store_.get();
+    const std::string text = dump_load_hints(hints_);
+    wnk::async::run_then_post<bool>(
+        *deps_.pool, *deps_.main, life_.weak(), {},
+        [store, text](const wnk::async::CancellationToken &) {
+            std::string error;
+            const bool ok = store->save_load_hints(text, &error);
+            if (!ok) WNK_LOGW(kCat, "plugins: load hints not saved: %s", error.c_str());
+            return ok;
+        },
+        [](bool) {});
 }
 
 void PluginManager::load_plugin(const InstalledPlugin &p) {
@@ -115,25 +174,62 @@ void PluginManager::load_plugin(const InstalledPlugin &p) {
             o.path = store->materialize(p, dir, &o.error);
             return o;
         },
-        [this, p](Out o) {
-            if (o.path.empty()) {
-                pending_loads_--;
-                load_errors_[p.id] = o.error;
-                WNK_LOGW(kCat, "plugins: %s not written: %s", p.internal_name.c_str(), o.error.c_str());
-                changed();
-                return;
+        [this, p](Out o) { send_load(p, o.path, o.error); });
+}
+
+void PluginManager::send_load(const InstalledPlugin &p, const std::string &path, const std::string &error) {
+    if (path.empty()) {
+        pending_loads_--;
+        load_errors_[p.id] = error;
+        WNK_LOGW(kCat, "plugins: %s not written: %s", p.internal_name.c_str(), error.c_str());
+        changed();
+        return;
+    }
+    nlohmann::json req = {{"op", "load"}, {"plugin", path}, {"sha256", p.sha256}};
+    const LoadHint *known = hint_for(hints_, p);
+    if (known && !known->activity.empty()) req["activity"] = known->activity;
+    auto learned = std::make_shared<LoadHint>();
+    auto stages = std::make_shared<std::string>();  // the runtime's per-stage times, for the log
+    learned->sha256 = p.sha256;
+    const auto started = std::chrono::steady_clock::now();
+    deps_.runtime->request(
+        req,
+        [this, learned, stages](const nlohmann::json &e) {
+            const std::string ev = e.value("event", "");
+            if (ev == "timing") {
+                for (const auto &[stage, v] : e.items()) {
+                    if (stage == "event" || stage == "id" || !v.is_number_integer()) continue;
+                    *stages += (stages->empty() ? "" : " ") + stage + " " + std::to_string(v.get<long long>());
+                }
             }
-            deps_.runtime->request(
-                {{"op", "load"}, {"plugin", o.path}, {"sha256", p.sha256}},
-                [this](const nlohmann::json &e) {
-                    if (e.value("event", "") == "provider") providers_.push_back(runtime::parse_provider(e));
-                },
-                [this, p](bool ok, const std::string &error) {
-                    pending_loads_--;
-                    load_errors_[p.id] = ok ? std::string() : error;
-                    if (!ok) WNK_LOGW(kCat, "plugins: %s did not load: %s", p.internal_name.c_str(), error.c_str());
-                    changed();
-                });
+            if (ev == "provider") {
+                providers_.push_back(runtime::parse_provider(e));
+                learned->providers.push_back(providers_.back().name);
+            } else if (ev == "compat" && e.value("context", "") == "headless-activity") {
+                const std::string type = e.value("type", "");
+                if (valid_activity_name(type)) learned->activity = type;
+            }
+        },
+        [this, p, learned, stages, started](bool ok, const std::string &error) {
+            pending_loads_--;
+            load_errors_[p.id] = ok ? std::string() : error;
+            const long long ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                     std::chrono::steady_clock::now() - started).count();
+            if (!ok) {
+                WNK_LOGW(kCat, "plugins: %s did not load: %s", p.internal_name.c_str(), error.c_str());
+            } else {
+                WNK_LOGI(kCat, "plugins: %s loaded in %lld ms, %zu providers%s%s%s%s%s", p.internal_name.c_str(), ms,
+                         learned->providers.size(), learned->activity.empty() ? "" : ", with ",
+                         learned->activity.c_str(), stages->empty() ? "" : " (runtime ms: ", stages->c_str(),
+                         stages->empty() ? "" : ")");
+                const LoadHint *before = hint_for(hints_, p);
+                if (!before || before->providers != learned->providers || before->activity != learned->activity) {
+                    hints_[p.id] = *learned;
+                    hints_dirty_ = true;
+                }
+            }
+            save_hints();
+            changed();
         });
 }
 
