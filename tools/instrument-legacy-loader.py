@@ -152,7 +152,7 @@ def instrument(source, output):
         "            manifestText = new String(readAll(in, 64 * 1024), StandardCharsets.UTF_8);",
         "manifest.read")
     main = once(main,
-        "        BasePlugin.Manifest manifest = MainAPIKt.getMapper().readValue(manifestText, BasePlugin.Manifest.class);",
+        "        BasePlugin.Manifest manifest = Manifests.read(manifestText);",
         '        legacyLoadStage("manifest.parse.begin");\n' +
         '        legacyLoadStage("manifest.minijson.begin");\n' +
         '        BasePlugin.Manifest manifest = legacyManifest(manifestText);\n' +
@@ -182,8 +182,8 @@ def instrument(source, output):
     service = service_stage(service, "        String hash = Main.sha256(file);",
         '        Main.legacyLoadStage("integrity.begin");\n        String hash = Main.sha256(file);\n' +
         '        Main.legacyLoadStage("integrity.end");')
-    service = service_stage(service, "        BasePlugin plugin = Main.loadPlugin(file, data, hash, null);",
-        '        Main.legacyLoadStage("load.begin");\n        BasePlugin plugin = Main.loadPlugin(file, data, hash, null);\n' +
+    service = service_stage(service, "        BasePlugin plugin = Main.loadPlugin(file, data, hash, null, p.get(\"activity\"));",
+        '        Main.legacyLoadStage("load.begin");\n        BasePlugin plugin = Main.loadPlugin(file, data, hash, null, p.get(\"activity\"));\n' +
         '        Main.legacyLoadStage("load.end");')
     service = service_stage(service, '        if (!Main.answerDialogs("load")) return false;',
         '        Main.legacyLoadStage("dialogs.begin");\n        if (!Main.answerDialogs("load")) return false;\n' +

@@ -185,7 +185,20 @@ public final class Main {
      * MainActivity on Android).
      */
     static BasePlugin loadPlugin(File file, File data, String hash, Class<?> activityType) throws Exception {
+        return loadPlugin(file, data, hash, activityType, null);
+    }
+
+    /**
+     * `activityHint`: the Activity type this build of the plugin cast its context to when it was last
+     * loaded (the app remembers it, plugins/load_hints.hpp). Used from the start when it names an Activity
+     * class, so the plugin is not loaded a first time with the application context only to fail its cast
+     * (Cricify and PlayFy fetch their configuration in load()). Anything else is ignored.
+     */
+    static BasePlugin loadPlugin(File file, File data, String hash, Class<?> activityType, String activityHint)
+            throws Exception {
+        final boolean firstPass = activityType == null;
         PathClassLoader loader = new PathClassLoader(file.getAbsolutePath(), Main.class.getClassLoader());
+        LoadTiming.mark("classloader");
         String manifestText;
         try (InputStream in = loader.getResourceAsStream("manifest.json")) {
             if (in == null) {
@@ -194,8 +207,17 @@ public final class Main {
             }
             manifestText = new String(readAll(in, 64 * 1024), StandardCharsets.UTF_8);
         }
-        BasePlugin.Manifest manifest = MainAPIKt.getMapper().readValue(manifestText, BasePlugin.Manifest.class);
+        BasePlugin.Manifest manifest = Manifests.read(manifestText);
+        LoadTiming.mark("manifest");
         Class<?> pluginClass = loader.loadClass(manifest.getPluginClassName());
+        LoadTiming.mark("class");
+        if (activityType == null && activityHint != null) {
+            activityType = activityClass(activityHint, loader);
+            if (activityType != null) {
+                emit(event("compat", "context", "headless-activity", "type", activityType.getName(),
+                        "reason", "remembered from its last load"));
+            }
+        }
         HeadlessContext app = new HeadlessContext(data, "com.lagradost.cloudstream3");
         appContext = app;
         // A plugin that needs an Activity also finds it where CloudStream keeps one (CommonActivity.activity,
@@ -204,18 +226,19 @@ public final class Main {
         android.app.Activity activity = activityType == null ? null : HeadlessActivities.create(activityType, app);
         Object previousActivity = activity == null ? null : commonActivity(new java.lang.ref.WeakReference<>(activity));
         try {
-            return loadPluginWith(file, data, hash, activityType, loader, manifest, pluginClass, app, activity);
+            return loadPluginWith(file, data, hash, activityType, loader, manifest, pluginClass, app, activity, firstPass);
         } finally {
             if (activity != null) commonActivity(previousActivity);
         }
     }
 
     private static BasePlugin loadPluginWith(File file, File data, String hash, Class<?> activityType, ClassLoader loader,
-            BasePlugin.Manifest manifest, Class<?> pluginClass, HeadlessContext app, android.app.Activity activity)
-            throws Exception {
+            BasePlugin.Manifest manifest, Class<?> pluginClass, HeadlessContext app, android.app.Activity activity,
+            boolean firstPass) throws Exception {
         BasePlugin plugin = (BasePlugin) pluginClass.getDeclaredConstructor().newInstance();
+        LoadTiming.mark("construct");
         plugin.setFilename(file.getAbsolutePath());
-        if (activityType == null) {
+        if (firstPass) {
             emit(event("plugin", "name", manifest.getName(), "version", manifest.getVersion(),
                     "class", manifest.getPluginClassName(), "base", plugin instanceof Plugin ? "Plugin" : "BasePlugin",
                     "requiresResources", manifest.getRequiresResources(), "sha256", hash));
@@ -232,7 +255,7 @@ public final class Main {
                     ((Plugin) plugin).setResources(new android.content.res.Resources(assets,
                             app.getResources().getDisplayMetrics(), app.getResources().getConfiguration()));
                 }
-                if (activityType == null) {
+                if (firstPass) {
                     emit(event("resources", "package", assets.resourceTable() == null ? null : assets.resourceTable().packageName()));
                 }
             } catch (Throwable t) {
@@ -240,6 +263,7 @@ public final class Main {
                 return null;
             }
         }
+        LoadTiming.mark("resources");
         try {
             if (plugin instanceof Plugin) {
                 ((Plugin) plugin).load(activity == null ? app : activity);
@@ -260,6 +284,7 @@ public final class Main {
             error("lifecycle", t);
             return null;
         }
+        LoadTiming.mark("load");
         if (plugin instanceof Plugin && ((Plugin) plugin).getOpenSettings() != null) {
             emit(event("settings", "available", true));
         }
@@ -280,6 +305,16 @@ public final class Main {
             return previous;
         } catch (ReflectiveOperationException | LinkageError e) {
             System.err.println("csweb: cannot set CommonActivity.activity: " + e);
+            return null;
+        }
+    }
+
+    /** The class named `name` in the plugin's class loader, if it is an Activity type; else null. */
+    private static Class<?> activityClass(String name, ClassLoader loader) {
+        try {
+            Class<?> c = Class.forName(name, false, loader);
+            return android.app.Activity.class.isAssignableFrom(c) ? c : null;
+        } catch (ClassNotFoundException | LinkageError e) {
             return null;
         }
     }

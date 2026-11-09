@@ -116,6 +116,7 @@ void Application::on_start(wnk::app::Context &ctx) {
     deps.kv = ctx.store();
     deps.runtime = runtime_.get();
     deps.plugin_dir = plugin_dir;
+    deps.home_provider = [this] { return settings_ ? settings_->get_string(settings::kHomeProvider) : std::string(); };
     plugins_ = std::make_unique<plugins::PluginManager>(std::move(deps));
     services_.plugins = plugins_.get();
     plugins_->on_changed = [this] { services_.plugins_changed.emit(); };

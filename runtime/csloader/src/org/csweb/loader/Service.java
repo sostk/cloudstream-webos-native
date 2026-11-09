@@ -63,6 +63,7 @@ final class Service {
         ScheduledExecutorService timers = Executors.newSingleThreadScheduledExecutor(daemon("csweb-timer"));
         Future<?> lastAdmin = null;
         List<Future<?>> opsSinceAdmin = new ArrayList<>();
+        Manifests.warmUp();  // the Jackson mapper, built while plugins load
         Main.emit(Main.event("ready", "protocol", 1));
         BufferedReader in = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
         while (true) {
@@ -202,14 +203,20 @@ final class Service {
         File file = new File(Main.required(p, "plugin")).getAbsoluteFile();
         String expected = Main.required(p, "sha256");
         if (plugins.containsKey(file.getPath())) throw new IllegalStateException("plugin already loaded: " + file);
+        LoadTiming.begin();
         String hash = Main.sha256(file);
+        LoadTiming.mark("integrity");
         if (!expected.equalsIgnoreCase(hash)) {
             Main.emit(Main.event("error", "stage", "integrity", "type", "HashMismatch", "message",
                     "plugin SHA-256 " + hash + " does not match the supplied " + expected));
             return false;
         }
-        BasePlugin plugin = Main.loadPlugin(file, data, hash, null);
+        BasePlugin plugin = Main.loadPlugin(file, data, hash, null, p.get("activity"));
+        Map<String, Object> timing = LoadTiming.end();
         if (plugin == null) return false;
+        Map<String, Object> timingEvent = Main.event("timing");
+        timingEvent.putAll(timing);
+        Main.emit(timingEvent);
         plugins.put(file.getPath(), plugin);
         if (!Main.answerDialogs("load")) return false;
         int n = 0;
