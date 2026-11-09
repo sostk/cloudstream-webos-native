@@ -1,0 +1,51 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Alpine edge packages of the armv7 plugin runtime (legacy package, docs/legacy-build.md).
+# Written by runtime/tools/make_lock.py from runtime/rootfs-armv7.manifest; read by tools/fetch-runtime-inputs.sh.
+#   <sha256>  <path in the inputs mirror>  <upstream URL>
+# Files not on Alpine edge (the rebuilt ART and its signing key) have the mirror as their URL.
+# mirror: https://github.com/sostk/cloudstream-webos-native/releases/download/runtime-inputs-armv7-1
+474c886292fd82637e77d51adc00f6bd2b41926cc6f5b0946fb113cc61a777bd  alpine/armv7/art_standalone-0_git20251009-r3.apk  https://github.com/sostk/cloudstream-webos-native/releases/download/runtime-inputs-armv7-1/alpine_armv7_art_standalone-0_git20251009-r3.apk
+aeb1c12cb09a0fb6efe23c4631fcddaaa183e3fd89eaafb17b3f39f9c5175455  alpine/armv7/bionic_translation-0_git20260927-r0.apk  https://dl-cdn.alpinelinux.org/alpine/edge/testing/armv7/bionic_translation-0_git20260927-r0.apk
+98de6100efb710832e4c2edc7494b57b37bad5ba2a9409ae136cc6ccce454332  alpine/armv7/busybox-1.38.0-r8.apk  https://dl-cdn.alpinelinux.org/alpine/edge/main/armv7/busybox-1.38.0-r8.apk
+f5a07d8b04cad98865eccb73859feab01256be7bd6618c82677954f588f1345a  alpine/armv7/busybox-binsh-1.38.0-r8.apk  https://dl-cdn.alpinelinux.org/alpine/edge/main/armv7/busybox-binsh-1.38.0-r8.apk
+1020e74f8a5816a55cdbd38398d1760641860a0247ee14250ca52d9be5c29d9e  alpine/armv7/ca-certificates-20261020-r0.apk  https://dl-cdn.alpinelinux.org/alpine/edge/main/armv7/ca-certificates-20261020-r0.apk
+975e0039c6bc880f1f84a9bb3ed2dd4f42b027d09ffd07014771592dc1334ea8  alpine/armv7/hwdata-pci-0.412-r0.apk  https://dl-cdn.alpinelinux.org/alpine/edge/main/armv7/hwdata-pci-0.412-r0.apk
+fd57cb65ac2f8e5a96d412da63a598de7a95cc897304979600b3b5fefdf26016  alpine/armv7/icu-data-en-78.1-r0.apk  https://dl-cdn.alpinelinux.org/alpine/edge/main/armv7/icu-data-en-78.1-r0.apk
+caeefdd61ed4f4bea911a946ca9778d20dff35da3c8786cd524dd00b9c8cb213  alpine/armv7/icu-libs-78.1-r0.apk  https://dl-cdn.alpinelinux.org/alpine/edge/main/armv7/icu-libs-78.1-r0.apk
+aaeec1b4b6db8d5bfbcbe36ebefb22d57e245329d0fa9b2c3fd63a2ad5e5bd13  alpine/armv7/java-cacerts-1.1-r0.apk  https://dl-cdn.alpinelinux.org/alpine/edge/community/armv7/java-cacerts-1.1-r0.apk
+32af5475e74b2ad2186a2095b04ccb6a7366e5e198273d54b62d45492a42a029  alpine/armv7/libbsd-0.12.2-r0.apk  https://dl-cdn.alpinelinux.org/alpine/edge/main/armv7/libbsd-0.12.2-r0.apk
+594b3e9eff989fe7787bf304b609dc9c3f0e016017d36faee2dcd97a794668c3  alpine/armv7/libcrypto3-3.5.9-r0.apk  https://dl-cdn.alpinelinux.org/alpine/edge/main/armv7/libcrypto3-3.5.9-r0.apk
+3be9dfc0e8892f8cb0547318c1e939845243f0d218a2b0bf7418b6c247f01162  alpine/armv7/libdrm-2.4.134-r0.apk  https://dl-cdn.alpinelinux.org/alpine/edge/main/armv7/libdrm-2.4.134-r0.apk
+ca775c0379fb9bcfbcbd2e840b7f4acef2dface71db25127cde3041f0b7b672e  alpine/armv7/libelf-0.195-r0.apk  https://dl-cdn.alpinelinux.org/alpine/edge/main/armv7/libelf-0.195-r0.apk
+0ea7986accb3847f30d30eba9dbc0ee526dd473253769d6f917f5eb55f99b85e  alpine/armv7/libexpat-2.10.0-r0.apk  https://dl-cdn.alpinelinux.org/alpine/edge/main/armv7/libexpat-2.10.0-r0.apk
+44251bbcfbd136ebdd80ac5dac530ef50d945658a79bdab22665b5a6bce145e9  alpine/armv7/libffi-3.8.0-r0.apk  https://dl-cdn.alpinelinux.org/alpine/edge/main/armv7/libffi-3.8.0-r0.apk
+0c27ef422d18e6b7c81da589846cba163177b32d286ba0071ca01f08efb9768c  alpine/armv7/libgcc-15.2.0-r9.apk  https://dl-cdn.alpinelinux.org/alpine/edge/main/armv7/libgcc-15.2.0-r9.apk
+e5de4b60159f9c2c35d51f4536905d6fae41db0e1777298bc20e1b9cae1fe0de  alpine/armv7/libmd-1.3.0-r0.apk  https://dl-cdn.alpinelinux.org/alpine/edge/main/armv7/libmd-1.3.0-r0.apk
+f55573f2ff442258f122502e6d06a0d3eb926f3681986123b5eb200377280099  alpine/armv7/libpciaccess-0.19-r0.apk  https://dl-cdn.alpinelinux.org/alpine/edge/main/armv7/libpciaccess-0.19-r0.apk
+a5df52be28d961b7a6cbd8cf05132f9eaa62ab61ce27c0bcd2bc929a8c770fa6  alpine/armv7/libstdc++-15.2.0-r9.apk  https://dl-cdn.alpinelinux.org/alpine/edge/main/armv7/libstdc++-15.2.0-r9.apk
+61a9d236b15de4cde58259fd50d4410a063bb74b25e1e1549476504716c0d671  alpine/armv7/libtasn1-4.21.0-r0.apk  https://dl-cdn.alpinelinux.org/alpine/edge/main/armv7/libtasn1-4.21.0-r0.apk
+bb340cb414d5dbded164b3e56d8f90314bdf6918a5546eb43410e7d06b5f4be0  alpine/armv7/libucontext-1.5.2-r0.apk  https://dl-cdn.alpinelinux.org/alpine/edge/main/armv7/libucontext-1.5.2-r0.apk
+148ce2ead5fa70e5e25ee2e680621ddefb4425cc967051ad16aa7afd1d399b37  alpine/armv7/libunwind-1.8.3-r0.apk  https://dl-cdn.alpinelinux.org/alpine/edge/main/armv7/libunwind-1.8.3-r0.apk
+4355da9480aac6571a28684acac61d57ff84b44e47347a32e9f012c55f05205a  alpine/armv7/libx11-1.8.14-r0.apk  https://dl-cdn.alpinelinux.org/alpine/edge/main/armv7/libx11-1.8.14-r0.apk
+33c04071bfec22737de2f35de80157c37da49b1b744ca8298bc6511614b50d71  alpine/armv7/libxau-1.0.12-r0.apk  https://dl-cdn.alpinelinux.org/alpine/edge/main/armv7/libxau-1.0.12-r0.apk
+183d9fdd1d291881f300acda2f29388b4e7303e8f52e14105b15cfb696a2c7fe  alpine/armv7/libxcb-1.17.0-r2.apk  https://dl-cdn.alpinelinux.org/alpine/edge/main/armv7/libxcb-1.17.0-r2.apk
+2942b8a29a777efb73d0be0efd9331c61fd7421712aa7b0ad69d908c19896166  alpine/armv7/libxdmcp-1.1.5-r1.apk  https://dl-cdn.alpinelinux.org/alpine/edge/main/armv7/libxdmcp-1.1.5-r1.apk
+a85aad5b9c9945ae915d132c6e5f5126be6dd8693846ba7099589a9d360b9105  alpine/armv7/libxml2-2.13.9-r2.apk  https://dl-cdn.alpinelinux.org/alpine/edge/main/armv7/libxml2-2.13.9-r2.apk
+d4a6382fc724d7d6540c1dcfc584238768454ea53f4c604ac493d37aaeb446e9  alpine/armv7/libxshmfence-1.3.3-r0.apk  https://dl-cdn.alpinelinux.org/alpine/edge/main/armv7/libxshmfence-1.3.3-r0.apk
+4540a1f942b2e1a3c28dc125bde5e54cb3354339fa83eb4ef34c82ebeb0c5ecc  alpine/armv7/llvm23-libs-23.1.5-r0.apk  https://dl-cdn.alpinelinux.org/alpine/edge/main/armv7/llvm23-libs-23.1.5-r0.apk
+a58f127fc28d2e42f03aaba609a08d19611187751f2f94a7ce72f164ba81c425  alpine/armv7/lz4-libs-1.10.0-r1.apk  https://dl-cdn.alpinelinux.org/alpine/edge/main/armv7/lz4-libs-1.10.0-r1.apk
+401cf526ba382134c8c5e96aeed028934770b6f332b421e82adbfc0467c5713b  alpine/armv7/mesa-26.2.6-r0.apk  https://dl-cdn.alpinelinux.org/alpine/edge/main/armv7/mesa-26.2.6-r0.apk
+26666ffb7b23b11cc69c30ae61647a7e0afdea3dc64e3ffd3ebb483b8333293f  alpine/armv7/mesa-egl-26.2.6-r0.apk  https://dl-cdn.alpinelinux.org/alpine/edge/main/armv7/mesa-egl-26.2.6-r0.apk
+5fc454c720e51e5916f53ee53d76c372969aef5dc5b054a0225dc54d1c4253db  alpine/armv7/mesa-gbm-26.2.6-r0.apk  https://dl-cdn.alpinelinux.org/alpine/edge/main/armv7/mesa-gbm-26.2.6-r0.apk
+1d79a4e0ef7891b2f9e4249e21367b2ddc275e2796b17bb0d3288314695baeae  alpine/armv7/mesa-gles-26.2.6-r0.apk  https://dl-cdn.alpinelinux.org/alpine/edge/main/armv7/mesa-gles-26.2.6-r0.apk
+1cef933b1e5738fd615ffb00d8629fd4fa5902cf588743a52b320c728262351f  alpine/armv7/musl-1.2.6-r6.apk  https://dl-cdn.alpinelinux.org/alpine/edge/main/armv7/musl-1.2.6-r6.apk
+7e2ca9db870d7938e2911d990b0009d40939e3c2a17bfa472e16a26f02a39238  alpine/armv7/p11-kit-0.26.2-r1.apk  https://dl-cdn.alpinelinux.org/alpine/edge/main/armv7/p11-kit-0.26.2-r1.apk
+49fbc98942cbd8e1dbd1e3982878e391192ea22699291de35bee8216410c6ffc  alpine/armv7/p11-kit-trust-0.26.2-r1.apk  https://dl-cdn.alpinelinux.org/alpine/edge/main/armv7/p11-kit-trust-0.26.2-r1.apk
+dbacb332f8064a82e61691a476223992b33fc9e1488c65e69e6d8fd09d12c7dd  alpine/armv7/spirv-tools-1.4.357.0-r0.apk  https://dl-cdn.alpinelinux.org/alpine/edge/main/armv7/spirv-tools-1.4.357.0-r0.apk
+1bcca49100fe807c1ed7b2fc0a6ba7e2ddd383f8ff6d51fa04cb2942b436442e  alpine/armv7/vixl-8.0.0-r0.apk  https://dl-cdn.alpinelinux.org/alpine/edge/testing/armv7/vixl-8.0.0-r0.apk
+f63737d6a893194e4c33c813eefe0adf436dab52db536177b058cfe3cfb8573e  alpine/armv7/wayland-libs-client-1.26.0-r0.apk  https://dl-cdn.alpinelinux.org/alpine/edge/main/armv7/wayland-libs-client-1.26.0-r0.apk
+eb1c038a001e5b79fe5d331d9cf698d52aac1e05ba72a74a0714d8b39cf599b6  alpine/armv7/wolfssl-jni-5.9.4-r0.apk  https://dl-cdn.alpinelinux.org/alpine/edge/community/armv7/wolfssl-jni-5.9.4-r0.apk
+31a4d8f9ea3d29be18219f556487fa6cd6ca2953c0e4c66f13c46fa7fa025e1f  alpine/armv7/xz-libs-5.8.4-r0.apk  https://dl-cdn.alpinelinux.org/alpine/edge/main/armv7/xz-libs-5.8.4-r0.apk
+d1b79a5717daa3c0bd406a7666aa75d0b16cb2c7c8557c77e6d885a356eb5ac8  alpine/armv7/zlib-1.4-r0.apk  https://dl-cdn.alpinelinux.org/alpine/edge/main/armv7/zlib-1.4-r0.apk
+690b65afbd95201ca75b93ddeb63dce40640bbda8688aad77c8d936e3bf445ea  alpine/armv7/zstd-libs-1.5.7-r2.apk  https://dl-cdn.alpinelinux.org/alpine/edge/main/armv7/zstd-libs-1.5.7-r2.apk
+25443a3625794d83a69571ffab71b861c852e669bef3113839931bcb4a901dac  alpine/armv7/keys/legacy@csweb.invalid-6af11187.rsa.pub  https://github.com/sostk/cloudstream-webos-native/releases/download/runtime-inputs-armv7-1/alpine_armv7_keys_legacy@csweb.invalid-6af11187.rsa.pub

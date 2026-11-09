@@ -18,10 +18,10 @@ licence texts from those sources are in `texts/<origin>/`.
 | Origin | Version | Licence | Shipped | Recipe (aports) | Upstream |
 |---|---|---|---|---|---|
 | art_standalone | 0_git20251009-r3 | Apache-2.0 | 33 files | [8ac8f5cb2e](https://gitlab.alpinelinux.org/alpine/aports/-/commit/8ac8f5cb2e5c2206a93de5498f6368190625b3cc) | https://gitlab.com/android_translation_layer/art_standalone |
-| bionic_translation | 0_git20260317-r0 | Apache-2.0 | 1 file | [136126b9dc](https://gitlab.alpinelinux.org/alpine/aports/-/commit/136126b9dc634e1f23a6b46e0b83ce5d721079ac) | https://gitlab.com/android_translation_layer/bionic_translation |
+| bionic_translation | 0_git20260927-r0 | Apache-2.0 | 1 file | [a2f284d4c6](https://gitlab.alpinelinux.org/alpine/aports/-/commit/a2f284d4c6e30512f55e9423cdec4fc41de624ea) | https://gitlab.com/android_translation_layer/bionic_translation |
 | ca-certificates | 20261020-r0 | MPL-2.0 AND MIT | trust/cacerts (Mozilla's CA list, converted to a Java trust store) | [1c5642bff0](https://gitlab.alpinelinux.org/alpine/aports/-/commit/1c5642bff0a86736a8ae3a78f13977867add64ff) | https://www.mozilla.org/en-US/about/governance/policies/security-group/certs/ |
 | elfutils | 0.195-r0 | GPL-3.0-or-later AND ( GPL-2.0-or-later OR LGPL-3.0-or-later ) | 1 file | [8f13294206](https://gitlab.alpinelinux.org/alpine/aports/-/commit/8f13294206888f3dd44ed74a8eb3dd9934499e81) | https://sourceware.org/elfutils/ |
-| expat | 2.9.0-r0 | MIT | 1 file | [46440e4654](https://gitlab.alpinelinux.org/alpine/aports/-/commit/46440e4654dc1e4e7d3a69b8a0a9e22fdeda4a88) | https://libexpat.github.io/ |
+| expat | 2.10.0-r0 | MIT | 1 file | [e18a81f646](https://gitlab.alpinelinux.org/alpine/aports/-/commit/e18a81f6461517119d85f2650a4f3e5e01861d28) | https://libexpat.github.io/ |
 | gcc | 15.2.0-r9 | GPL-2.0-or-later AND LGPL-2.1-or-later | 2 files | [21530a8b7b](https://gitlab.alpinelinux.org/alpine/aports/-/commit/21530a8b7b00b34c648a6b3744d461f32203a885) | https://gcc.gnu.org |
 | icu | 78.1-r0 | ICU | 4 files | [6755fdb214](https://gitlab.alpinelinux.org/alpine/aports/-/commit/6755fdb21483ba250d374c3244f0f48bc63447e2) | https://icu.unicode.org/ |
 | libbsd | 0.12.2-r0 | BSD-3-Clause | 1 file | [02365e78d6](https://gitlab.alpinelinux.org/alpine/aports/-/commit/02365e78d654a7beb23fd35d7d69f4a649009ede) | https://libbsd.freedesktop.org/ |
@@ -34,7 +34,7 @@ licence texts from those sources are in `texts/<origin>/`.
 | vixl | 8.0.0-r0 | BSD-3-Clause | 1 file | [0285ee09fc](https://gitlab.alpinelinux.org/alpine/aports/-/commit/0285ee09fc8770308350f13af231f66f970db67f) | https://github.com/Linaro/vixl |
 | wolfssl | 5.9.4-r0 | GPL-3.0-only | usr/lib/libwolfssl.so.46 (rebuilt from the same wolfSSL release, runtime/native/build-wolfssl.sh) | [0460af5724](https://gitlab.alpinelinux.org/alpine/aports/-/commit/0460af5724cb447aa15601a37c5a87fd5c9616f5) | https://www.wolfssl.com/ |
 | xz | 5.8.4-r0 | GPL-2.0-or-later AND 0BSD AND Public-Domain AND LGPL-2.1-or-later | 1 file | [950af2f9ad](https://gitlab.alpinelinux.org/alpine/aports/-/commit/950af2f9ad0e4518d167e8ce0b41e7be0a7a730e) | https://tukaani.org/xz/ |
-| zlib | 1.3.2-r1 | Zlib | 1 file | [ed7d11b8c5](https://gitlab.alpinelinux.org/alpine/aports/-/commit/ed7d11b8c5de5f1744b2cf762c160c2385f28212) | https://zlib.net/ |
+| zlib | 1.4-r0 | Zlib | 1 file | [b2950bb0ed](https://gitlab.alpinelinux.org/alpine/aports/-/commit/b2950bb0ed4be3c96c018350a4d1848316bf211c) | https://zlib.net/ |
 | zstd | 1.5.7-r2 | BSD-3-Clause OR GPL-2.0-or-later | 1 file | [3c6e2ee2b1](https://gitlab.alpinelinux.org/alpine/aports/-/commit/3c6e2ee2b16f403d53eab39c4426eb61f003c322) | https://facebook.github.io/zstd/ |
 
 `art_standalone`'s Java class library (`usr/lib/java/dex/art/core-oj-hostdex.jar`) derives from
