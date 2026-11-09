@@ -45,3 +45,26 @@ model.
    Script: `docs/runtime/webview-feasibility.md`'s probe, pointed at the bundled browser.
 3. **Smaller builds:** Chromium's `headless_shell` or the `chrome-headless-shell` builds are
    x86_64-only from Google; an aarch64 musl build would have to be made here.
+
+## Existing community work (searched 2026-11-09)
+
+- **[An4kii/webos-chromium](https://github.com/An4kii/webos-chromium)**: experimental Chromium port for
+  rooted webOS 6.x TVs (our TV's generation: kernel 4.4.84, 32-bit userspace, Mali-G51).
+  - **Already measured on such a TV:** an ungoogled-chromium **151** AArch64 binary ran with its own
+    AArch64 loader and libraries. That is the approach here, so a current Chromium does run on webOS 6's
+    kernel.
+  - **What failed for them:** only the on-screen window (`No Wayland shell found`: LG's compositor offers
+    `wl_shell`/`wl_webos_shell`, not `xdg-shell`). A headless browser for CSWeb TV needs no window.
+  - **Their main path:** LG's webOS OSE Chromium **120** fork, built for ARMv7 (`browser_shell_webos` +
+    `libcbe.so`, linked on an 80-CPU cluster). Not yet run on a TV, and no binaries are published
+    (artifacts are on their cluster). Last push 2026-09-07, no release.
+- **[z3d6380/webos-libcbe-patch](https://github.com/z3d6380/webos-libcbe-patch)**: bind-mounts a patched
+  `libcbe.so` (a Brotli fix, same engine version) on webOS 11 sets. Not a newer engine; no builds
+  published.
+- **webosbrew/chromium84-temp**: a 2020 source dump of LG's Chromium 84, not a built engine.
+- **openlgtv:** nothing on browsers or engines.
+
+Nothing usable is published that gives a newer engine to apps (WAM) on webOS 6. For CSWeb TV, a
+headless current Chromium carried by the app remains the path, and the measured blocker is size
+(about 375 MiB). A dedicated `headless_shell` build (no media, UI or GTK) would be far smaller.
+That is the next thing to estimate.
