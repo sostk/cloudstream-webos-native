@@ -54,10 +54,43 @@ The runtime loads plugins one at a time, in the order the app asks. Three things
 
 Sportzx alone: 7159 ms (loaded twice) → 4037–4954 ms (once; the rest is its own network work).
 
+## Parallel plugin loads (2026-11-09)
+
+Two findings while measuring when Home's first row actually arrives (`home: first row after … ms`):
+
+- Loads were exclusive in the runtime, and **every other request waited for the most recent load
+  queued before it**. The app queues all loads at start, so Home's row request waited for the slowest
+  plugin (Sportzx, ~4 s of its own network work) even after Home's own plugin was ready.
+- Plugins loaded one at a time; CloudStream loads them in parallel (`PluginManager`, `amap`).
+
+What changed (`runtime/csloader`):
+
+- Loads run on their own pool (3 threads, `--load-workers`), in parallel with each other and with
+  operations. Unload and shutdown still run alone, after everything sent before them.
+- An operation waits for the loads sent before it only when the provider (or, for `settings`, the
+  plugin) it names is not loaded yet; `providers` waits for them all.
+- CloudStream's provider and extractor lists (`AtomicMutableList`, iterate only under `withLock`) are
+  copied under their lock wherever the runtime walks them.
+- `CommonActivity.activity` is set only while an Activity plugin's **constructor** runs, and no other
+  plugin is constructed meanwhile (a read/write lock). PlayFy and Sportzx read it only there; their
+  `load()` uses the context it is given. Operations of other plugins therefore cannot meet a set
+  `CommonActivity.activity` (whose `showToast` would call the headless activity's `runOnUiThread`)
+  except during those few milliseconds.
+- Each plugin's settings get the context that plugin was loaded with.
+
+Same TV and plugins (NTV as Home source, DaddyLive, Sportzx); time since launch, three starts each:
+
+| Build | Home's plugin ready | all plugins ready | Home's first row |
+|---|---|---|---|
+| serial (Home plugin first, previous section) | 1.6–1.9 s | 5.0–5.2 s | **10.7–12.4 s** |
+| parallel | 1.9–2.2 s | 4.7–4.9 s | **6.4–9.7 s** |
+
+Home's own plugin is about 0.3 s slower in parallel (three loads share the CPU with the Jackson
+warm-up), but its rows no longer wait for unrelated plugins. The rest of the first-row time is the
+source's own requests (NTV: 4–6.5 s after asking).
+
 ## Not done yet
 
-- Plugins still load one at a time; CloudStream loads them in parallel. The runtime keeps per-load
-  state in statics (`Main.appContext`, CommonActivity's activity during a load), so this needs care.
 - Each plugin start tries to compile the plugin with dex2oat, which fails in about 8 ms because the
   boot image is not at the path dex2oat looks for; the class loader stage is 70–120 ms per plugin.
 - Home's first rows still depend on the source's own network requests.

@@ -161,7 +161,7 @@ def instrument(source, output):
     main = before_after(main,
         "        Class<?> pluginClass = loader.loadClass(manifest.getPluginClassName());", "class.resolve")
     main = before_after(main,
-        "        BasePlugin plugin = (BasePlugin) pluginClass.getDeclaredConstructor().newInstance();",
+        "        BasePlugin plugin = construct(pluginClass, activity);",
         "class.initialize_and_construct")
     main = before_after(main,
         '        HeadlessContext app = new HeadlessContext(data, "com.lagradost.cloudstream3");', "context")
@@ -188,9 +188,9 @@ def instrument(source, output):
     service = service_stage(service, '        if (!Main.answerDialogs("load")) return false;',
         '        Main.legacyLoadStage("dialogs.begin");\n        if (!Main.answerDialogs("load")) return false;\n' +
         '        Main.legacyLoadStage("dialogs.end");')
-    service = service_stage(service, "        int n = 0;\n        for (MainAPI api : APIHolder.INSTANCE.getAllProviders()) {",
+    service = service_stage(service, "        int n = 0;\n        for (MainAPI api : Main.providers()) {",
         '        Main.legacyLoadStage("providers.begin");\n        int n = 0;\n' +
-        "        for (MainAPI api : APIHolder.INSTANCE.getAllProviders()) {")
+        "        for (MainAPI api : Main.providers()) {")
     service = service_stage(service, '        Main.emit(Main.event("loaded", "plugin", file.getPath(), "providers", n));',
         '        Main.legacyLoadStage("providers.end");\n' +
         '        Main.emit(Main.event("loaded", "plugin", file.getPath(), "providers", n));')

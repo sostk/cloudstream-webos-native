@@ -78,6 +78,8 @@ class HomeScreen : public wnk::ui::Screen {
     Backdrop *backdrop_ = nullptr;
     TopBar *top_ = nullptr;
     bool shown_ = false;
+    double requested_ms_ = 0;      // when the current source's rows were asked for
+    bool first_row_logged_ = false;
     PillButton *provider_button_ = nullptr;
     wnk::ui::Label *clock_ = nullptr;
     wnk::ui::Column *content_ = nullptr;
