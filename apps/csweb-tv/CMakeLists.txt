@@ -58,6 +58,7 @@ add_library(csweb_core STATIC
         src/plugins/repository.cpp
         src/profiles/profiles.cpp
         src/settings/preferences.cpp
+        src/runtime/network_settings.cpp
         src/settings/settings_store.cpp
         src/runtime/episode_groups.cpp
         src/runtime/provider_test.cpp

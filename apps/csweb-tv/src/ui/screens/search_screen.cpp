@@ -325,14 +325,15 @@ void SearchScreen::search(Ui &, const std::string &raw) {
     WNK_LOGI(kCat, "search: %zu of %zu sources", active.size(), s_.plugins->providers().size());  // not the query
     for (const std::string &provider : active) {
         auto items = std::make_shared<std::vector<runtime::SearchResult>>();
-        auto empty = std::make_shared<bool>(false);  // answered with no results (the runtime's "empty")
+        auto empty = std::make_shared<bool>(false);  // no results, or no search ("empty", "unsupported")
         auto id = std::make_shared<runtime::RuntimeClient::RequestId>(0);
         *id = s_.runtime->request(
             {{"op", "search"}, {"provider", provider}, {"query", q}, {"limit", 60}},
             [items, empty](const nlohmann::json &e) {
                 const std::string ev = e.value("event", "");
                 if (ev == "result") items->push_back(runtime::parse_search_result(e));
-                else if (ev == "empty") *empty = true;
+                // No results, or no search at all (MainAPI.search not implemented): not a failure.
+                else if (ev == "empty" || ev == "unsupported") *empty = true;
             },
             core::guarded(life_.weak(), [this, provider, items, empty, id, q](bool ok, const std::string &error) {
                 running_.erase(*id);

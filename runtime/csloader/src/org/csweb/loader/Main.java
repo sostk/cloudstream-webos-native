@@ -119,7 +119,7 @@ public final class Main {
             return false;
         }
 
-        initApp();
+        initApp(data);
         // --- PluginManager.loadPlugin, step by step -------------------------------------------------
         BasePlugin plugin = loadPlugin(file, data, hashBefore, null);
         if (plugin == null) return false;
@@ -168,7 +168,25 @@ public final class Main {
      * (YouTube plugins search and load through NewPipe). Reflection, as these classes are not on the
      * loader's compile classpath.
      */
-    static void initApp() {
+    static void initApp(File data) {
+        // Before any HTTP client exists: no TLS session resumption (wolfJSSE's shared session cache breaks
+        // concurrent handshakes, docs/runtime/tls.md).
+        try {
+            String wrapped = org.csweb.compat.TlsSessions.install();
+            if (wrapped == null) System.err.println("csweb: no SSLContext provider to wrap");
+        } catch (Throwable t) {
+            error("init:tls", t);
+        }
+        // CloudStream's OkHttpInitializer (androidx.startup): OkHttp's Android build reads its Public
+        // Suffix List through the application context's assets; without it DnsOverHttps and cookie
+        // domains fail ("Unable to load PublicSuffixDatabase.list resource").
+        try {
+            Class<?> okhttp = Class.forName("okhttp3.OkHttp");
+            okhttp.getMethod("initialize", android.content.Context.class)
+                    .invoke(okhttp.getField("INSTANCE").get(null), new HeadlessContext(data, "com.lagradost.cloudstream3"));
+        } catch (Throwable t) {
+            error("init:okhttp", t);
+        }
         try {
             Class<?> impl = Class.forName("com.lagradost.cloudstream3.DownloaderTestImpl");
             Object companion = impl.getField("Companion").get(null);
@@ -539,7 +557,15 @@ public final class Main {
             switch (op) {
                 case "search": {
                     String q = required(p, "query");
-                    Object r = await(c -> api.search(q, 1, c));
+                    Object r;
+                    try {
+                        r = await(c -> api.search(q, 1, c));
+                    } catch (kotlin.NotImplementedError e) {
+                        // MainAPI.search's default (TODO()): a provider without search, which CloudStream's
+                        // search skips (its safeApiCall failure is not shown).
+                        emit(event("unsupported", "api", api.getName() + ".search", "stage", "operation"));
+                        return false;
+                    }
                     return items(r, "result", limit);
                 }
                 case "mainpage": {
@@ -831,15 +857,26 @@ public final class Main {
     }
 
     static void error(String stage, Throwable t) {
+        String missing = null;
         for (Throwable c = t; c != null; c = c.getCause()) {
             if (c instanceof Unsupported) {
                 emit(event("unsupported", "api", c.getMessage(), "stage", stage));
                 break;
             }
+            if (missing == null) missing = Unsupported.missingPlatformClass(c);
+            if (c.getCause() == c) break;
         }
         Throwable root = t;
         while (root.getCause() != null && root.getCause() != root) root = root.getCause();
-        emit(event("error", "stage", stage, "type", t.getClass().getName(), "message", String.valueOf(t.getMessage()),
+        String message = String.valueOf(t.getMessage());
+        if (missing != null) {
+            // The plugin needs a part of Android this runtime does not have: say so, instead of the
+            // coroutine or linkage error it surfaced as.
+            String what = Unsupported.missingFeature(missing);
+            emit(event("unsupported", "api", what + " (" + missing + ")", "stage", stage));
+            message = "This source needs " + what + ", which is not available on the TV";
+        }
+        emit(event("error", "stage", stage, "type", t.getClass().getName(), "message", message,
                 "rootType", root.getClass().getName(), "rootMessage", String.valueOf(root.getMessage())));
         t.printStackTrace(System.err);
     }

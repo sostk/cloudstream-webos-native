@@ -8,7 +8,7 @@ except where stated. The app itself and this project's code are GPL-3.0-or-later
 ## Alpine Linux packages
 
 This inventory describes the ARMv7 files actually shipped by this runtime, as recorded in
-`MANIFEST.json` and `packages.tsv`. ARMv7 Alpine inputs are not yet pinned in a lock file.
+`MANIFEST.json` and `packages.tsv`. ARMv7 Alpine inputs are pinned in `runtime/inputs-armv7.lock`.
 ART is rebuilt from the listed Alpine recipe against wolfSSL 5.9.4, without ART source
 patches, and signed locally by CI (`runtime/build-art-armv7.sh`). Other Alpine files are
 copied from signed upstream packages except the rebuilt wolfSSL library described below.
@@ -54,7 +54,9 @@ Apache-2.0 label says; its notices are among `texts/art_standalone/`.
 ## CloudStream
 
 `csweb/cloudstream.jar` holds the class files (DEX) and Java resources of CloudStream's
-pre-release APK unchanged (SHA-256 in `runtime/inputs.lock`), without Android-only parts.
+pre-release APK unchanged (SHA-256 in `runtime/inputs.lock`), without Android-only parts, except one
+asset OkHttp reads through Android's AssetManager: `assets/PublicSuffixDatabase.list`, the Public Suffix
+List (https://publicsuffix.org, MPL-2.0: https://mozilla.org/MPL/2.0/).
 CloudStream is GPL-3.0: https://github.com/recloudstream/cloudstream (source of the pinned build:
 commit eb962b4fb7b1387b8de42ec58000cee0a01fe741, with CloudStream's own LICENSE).
 

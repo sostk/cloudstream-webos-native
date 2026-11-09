@@ -58,6 +58,10 @@ def sha256(path):
 
 
 ANDROID_ONLY = ("res/", "lib/", "assets/", "resources.arsc", "AndroidManifest.xml")
+# Android-only entries the runtime still needs: OkHttp's Android build reads the Public Suffix List as an
+# asset (AssetManager, through the application context OkHttp.initialize gets), for DnsOverHttps and
+# cookies; the runtime's application context reads assets from this jar (HeadlessContext.getAssets).
+KEEP_ASSETS = ("assets/PublicSuffixDatabase.list",)
 
 
 def is_signature(name):
@@ -69,7 +73,7 @@ def repack_classpath_jar(apk, jar):
     with zipfile.ZipFile(apk) as src, zipfile.ZipFile(jar, "w", zipfile.ZIP_STORED) as dst:
         for info in src.infolist():
             name = info.filename
-            if name.endswith("/") or name.startswith(ANDROID_ONLY) or is_signature(name):
+            if name.endswith("/") or is_signature(name) or (name.startswith(ANDROID_ONLY) and name not in KEEP_ASSETS):
                 continue
             data = src.read(info)
             zi = zipfile.ZipInfo(name, (1980, 1, 1, 0, 0, 0))

@@ -3,7 +3,9 @@
 
 #include "app/deep_link.hpp"
 #include "player/link_priority.hpp"
+#include "runtime/network_settings.hpp"
 #include "runtime/runtime_launcher.hpp"
+#include "settings/preferences.hpp"
 #include "ui/screens/home_screen.hpp"
 #include "ui/screens/player_screen.hpp"
 #include "ui/screens/setup_screen.hpp"
@@ -125,7 +127,11 @@ void Application::on_start(wnk::app::Context &ctx) {
     plugin_data_->restore();
     services_.plugin_data = plugin_data_.get();
 
-    runtime_->on_ready = [this] { plugins_->on_runtime_ready(); };
+    runtime_->on_ready = [this] {
+        // Before any load: a plugin's load() may already fetch through the chosen resolver.
+        if (settings_) runtime::send_dns(*runtime_, settings::dns_value(*settings_));
+        plugins_->on_runtime_ready();
+    };
     runtime_->on_state = [this](runtime::RuntimeClient::State) {
         services_.runtime_changed.emit();
         services_.plugins_changed.emit();  // Home shows a runtime failure

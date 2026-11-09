@@ -316,8 +316,52 @@ public final class CompatTest {
         uri();
         json();
         prefs();
+        missingPlatform();
+        tlsSessions();  // last: it changes the JVM's provider list
         System.out.println("compat tests: " + passed + " passed, " + failed + " failed");
         if (failed > 0) System.exit(1);
+    }
+
+    /** Failures from Android parts the runtime lacks are named; other missing classes are not. */
+    static void missingPlatform() {
+        // NTV's stream sniffer: withContext(Dispatchers.Main) without android.os.Looper.
+        Throwable ntv = new IllegalStateException("Module with the Main dispatcher had failed to initialize",
+                new NoClassDefFoundError("Failed resolution of: Landroid/os/Looper;"));
+        eq("looper", "android.os.Looper", org.csweb.compat.Unsupported.missingPlatformClass(ntv.getCause()));
+        eq("webview", "android.webkit.CookieManager",
+                org.csweb.compat.Unsupported.missingPlatformClass(new ClassNotFoundException("android.webkit.CookieManager")));
+        eq("feature named", true, org.csweb.compat.Unsupported.missingFeature("android.webkit.WebView").contains("WebView"));
+        eq("plugin class is not platform", null,
+                org.csweb.compat.Unsupported.missingPlatformClass(new ClassNotFoundException("com.example.Missing")));
+        eq("android class we have is not reported", null,
+                org.csweb.compat.Unsupported.missingPlatformClass(new NoClassDefFoundError("Failed resolution of: Landroid/widget/Foo;")));
+        eq("other errors ignored", null, org.csweb.compat.Unsupported.missingPlatformClass(new RuntimeException("Landroid/os/Looper;")));
+    }
+
+    /** TlsSessions: every SSLContext comes from the original provider, with its client session cache off. */
+    static void tlsSessions() throws Exception {
+        String base = javax.net.ssl.SSLContext.getInstance("TLS").getProvider().getName();
+        javax.net.ssl.SSLContext plain = javax.net.ssl.SSLContext.getInstance("TLS");
+        plain.init(null, null, null);
+        eq("cache on before", true, plain.getClientSessionContext().getSessionCacheSize() != 0);
+        eq("wraps the TLS provider", base, org.csweb.compat.TlsSessions.install());
+        eq("installed once", base, org.csweb.compat.TlsSessions.install());
+        eq("first provider", org.csweb.compat.TlsSessions.PROVIDER, java.security.Security.getProviders()[0].getName());
+        javax.net.ssl.SSLContext c = javax.net.ssl.SSLContext.getInstance("TLS");
+        eq("context from the wrapper", org.csweb.compat.TlsSessions.PROVIDER, c.getProvider().getName());
+        c.init(null, null, null);
+        eq("client cache off", 0, c.getClientSessionContext().getSessionCacheSize());
+        eq("protocols of the original", java.util.Arrays.asList(plain.getSupportedSSLParameters().getProtocols()),
+                java.util.Arrays.asList(c.getSupportedSSLParameters().getProtocols()));
+        eq("socket factory works", true, c.getSocketFactory().getDefaultCipherSuites().length > 0);
+        eq("TLSv1.3 wrapped too", 0, initialised("TLSv1.3").getClientSessionContext().getSessionCacheSize());
+        eq("default context cache off", 0, javax.net.ssl.SSLContext.getDefault().getClientSessionContext().getSessionCacheSize());
+    }
+
+    static javax.net.ssl.SSLContext initialised(String protocol) throws Exception {
+        javax.net.ssl.SSLContext c = javax.net.ssl.SSLContext.getInstance(protocol);
+        c.init(null, null, null);
+        return c;
     }
 
     /**

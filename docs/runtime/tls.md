@@ -38,3 +38,32 @@ upstream release tarball, fetched by URL and checked against Alpine's SHA-512.
 
 Host: InternetArchive search through the runtime service now returns 26 results in 1.3 s
 (evidence file above). TV: not yet run with this library.
+
+## Concurrent handshakes and the client session cache (2026-11-09)
+
+Seen on the TV: CineVood's home page failed with `SSLPeerUnverifiedException: Hostname cinevood.net not
+verified (no certificates)` while the site answered normally from a PC. Reproduced on the host runtime
+(x86_64) with a probe of our own, no plugin code: N threads open TLS connections to one host at once through
+one SSLContext (as OkHttp's fast fallback and plugins' parallel requests do).
+
+| wolfJSSE client session cache | concurrent handshakes with peer certificates |
+|---|---|
+| default (size 10), cinevood.net / github.com | 12 / 36 and 10 / 36; the rest had none, some failed "Object has been freed" |
+| size 0 | 36 / 36 (cinevood.net, github.com; twice each) |
+
+Sequential reconnects resume sessions correctly (peer certificates present). wolfJSSE has no property for
+the cache, and OkHttp creates an SSLContext per client, so `org.csweb.compat.TlsSessions` (installed first
+thing by `Main.initApp`) places a provider before wolfJSSE that hands out wolfJSSE's own SSLContexts with
+the client session cache size set to 0. Each handshake is then a full one (one more round trip per new
+connection; OkHttp's connection pool still reuses connections). Protocols, cipher suites and certificate
+checks are wolfJSSE's: with the wrapper, expired.badssl.com and self-signed.badssl.com are still refused.
+Through CloudStream's `app.baseClient`, 12 parallel requests to cinevood.net all completed TLS.
+
+## Known issue: closing some unread responses crashes wolfSSL (open)
+
+On the host runtime, `GET https://thedaddy.li/` (about 1.3 MB, HTTP/1.1) followed by closing the response
+without reading the body ends in SIGSEGV in `wolfSSL_read` (libwolfssljni → libwolfssl), with or without
+the wrapper above; reading the body first and then closing works. Not reproduced with
+speed.cloudflare.com downloads of 20 KB or 5 MB closed unread. CloudStream plugins normally read bodies
+(`app.get(...).text`/`document`), which works. To investigate: OkHttp's discard-on-close of an HTTP/1.1
+body (short read timeout, then socket close) against wolfJSSE's read after close.
