@@ -297,7 +297,8 @@ jobs:
           name: art-armv7
           path: runtime/native/out/art-armv7
 
-      # Unpinned (Alpine edge) until runtime/inputs-armv7.lock exists; build-runtime.sh says so in the log.
+      # Pinned by runtime/inputs-armv7.lock (docs/legacy-build.md); the rebuilt ART artifact is only used
+      # when that lock is removed to move the pins.
       - name: Build the runtime
         if: steps.runtime-cache.outputs.cache-hit != 'true'
         run: |

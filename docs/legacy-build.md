@@ -79,15 +79,15 @@ register qemu-arm/binfmt first; emulating the compiler can take hours. Alternati
 to reuse it. The rootfs installer still verifies the APK's signature using the artifact's public key.
 
 CI keeps the rebuilt APK, public key, recipe and provenance in the `art-armv7` artifact before the
-runtime job starts. The local output is `runtime/native/out/art-armv7/`. Retain these for the
-eventual input mirror and licence collection. Pinning this locally signed APK will also require
-retaining its public key in the pinned-input installation path; the current rebuild is for the
-unpinned bootstrap only. Pinned aarch64 builds and their inputs are unchanged.
+runtime job starts. The local output is `runtime/native/out/art-armv7/`. The rebuild is only used
+while the ARMv7 packages are unpinned: once `runtime/inputs-armv7.lock` exists, the pinned build
+installs the APK and public key recorded there (below) and does not rebuild ART. Pinned aarch64
+builds and their inputs are unchanged.
 
 ## First-time setup (once per move of the pins)
 
-Until `runtime/inputs-armv7.lock` exists, `build-runtime.sh --arch armv7` takes the armv7 packages unpinned
-from Alpine edge (CloudStream stays pinned). The committed `runtime/licenses-armv7/` inventory describes
+Without `runtime/inputs-armv7.lock`, `build-runtime.sh --arch armv7` takes the armv7 packages unpinned
+from Alpine edge (CloudStream stays pinned); the lock is committed, so remove it only to move the pins. The committed `runtime/licenses-armv7/` inventory describes
 the shipped ARMv7 files, including the rebuilt ART package. Normal legacy builds check that inventory
 strictly, even before APK pinning: dependency changes must have their notices regenerated and reviewed.
 `--latest` remains an exploratory build and does not enforce the committed inventory.
@@ -113,17 +113,35 @@ legacy build to verify them. The helper also installs the notices into the runti
 rebuild the IPK to include them. Releases include the legacy package only when CI builds it and
 the committed ARMv7 inventory exists. The release publication guard remains in place.
 
-After a build has worked on a TV, pin its APK inputs separately:
+## Pinning the ARMv7 packages
 
-```
-python3 runtime/tools/make_lock.py armv7          # writes runtime/inputs-armv7.lock from rootfs-armv7.manifest
-#  upload ~/.cache/csweb-runtime-inputs/alpine/armv7/*.apk to a runtime-inputs-N release (asset name =
-#  path with / -> _) and add its "# mirror: <url>" line to the lock
+`runtime/inputs-armv7.lock` pins every package in `runtime/rootfs-armv7.manifest` by SHA-256, as
+`runtime/inputs.lock` does for aarch64. With it, `build-runtime.sh --arch armv7` installs exactly those
+files with no network (`make-rootfs.sh` checks the result against the manifest), so an Alpine edge
+update can no longer change or break the legacy build. The rebuilt ART r3 is not on Alpine edge: the
+lock pins that APK and the public key it was signed with (`alpine/armv7/keys/`), which the pinned
+install trusts alongside Alpine's keys. Those two files exist only in the mirror release.
+
+To move the pins (for example to take a security update), run an unpinned build first: remove the lock,
+build with the `art-armv7` artifact, regenerate and review the notices as above. Then, with the same
+`art-armv7` directory present (or `CSWEB_ARMV7_ART_DIR` set):
+
+```sh
+M=https://github.com/sostk/cloudstream-webos-native/releases/download/runtime-inputs-armv7-N
+python3 runtime/tools/make_lock.py armv7 "$M"     # writes runtime/inputs-armv7.lock, files in ~/.cache
+cd ~/.cache/csweb-runtime-inputs && for f in alpine/armv7/*.apk alpine/armv7/keys/*.pub; do
+  cp "$f" "/tmp/assets/${f//\//_}"; done        # asset name = path with / -> _
+gh release create runtime-inputs-armv7-N /tmp/assets/* --title ... --notes ...
 ```
 
-Commit `runtime/inputs-armv7.lock` with its corresponding manifest and notices. Pinning the rebuilt ART
-APK also requires retaining and verifying its signing public key, as described above; the current
-unpinned rebuild path does not implement that pinned-APK installation yet.
+Run it soon after the unpinned build, as Alpine edge drops old builds, and use a new release (`-N`)
+for each move so earlier locks keep working. Upload the `art-armv7` artifact's `APKBUILD` and
+`PROVENANCE` to the same release (the recipe and build environment of the rebuilt APK). Commit the lock
+with its manifest and notices.
+
+Current pins: release `runtime-inputs-armv7-1`, from the unpinned build of 2026-11-09 (Alpine edge
+zlib 1.4-r0, libexpat 2.10.0-r0, bionic_translation 0_git20260927-r0; ART r3 rebuilt against
+wolfSSL 5.9.4).
 
 ## To check on the TV
 

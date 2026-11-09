@@ -19,7 +19,9 @@ cp /usr/share/apk/keys/"$ARCH"/* "$ROOT/etc/apk/keys/"   # signing keys for the 
 printf '%s\n' https://dl-cdn.alpinelinux.org/alpine/edge/main https://dl-cdn.alpinelinux.org/alpine/edge/community \
     https://dl-cdn.alpinelinux.org/alpine/edge/testing > "$ROOT/etc/apk/repositories"
 if [ -n "$APKS" ]; then
-    # Only the pinned files: apk still checks each package's signature against Alpine's keys.
+    # Only the pinned files: apk still checks each package's signature against Alpine's keys, plus the
+    # pinned public key of a locally rebuilt package (armv7's ART r3, runtime/inputs-armv7.lock).
+    if [ -d "$APKS/keys" ]; then cp "$APKS"/keys/*.pub "$ROOT/etc/apk/keys/"; fi
     apk add -q --root "$ROOT" --arch "$ARCH" --initdb --no-scripts --no-network --keys-dir "$ROOT/etc/apk/keys" \
         --repositories-file /dev/null "$APKS"/*.apk
     apk info --root "$ROOT" -v 2>/dev/null | sort > /tmp/installed
