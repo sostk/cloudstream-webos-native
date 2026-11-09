@@ -72,7 +72,7 @@ jobs:
 
       - name: Build
         working-directory: ${{ env.KIT }}
-        run: cmake --build --preset ${{ matrix.preset }} -j"$(nproc)"
+        run: $GITHUB_WORKSPACE/tools/retry-transient.sh cmake --build --preset ${{ matrix.preset }} -j"$(nproc)"
 
       - name: Test (kit and apps)
         if: matrix.preset != 'host-asan'
@@ -136,7 +136,7 @@ jobs:
       - name: Build the runtime from the pinned inputs
         if: steps.runtime-cache.outputs.cache-hit != 'true'
         run: |
-          tools/build-runtime.sh
+          tools/retry-transient.sh tools/build-runtime.sh
           tar -C runtime/dist -cf runtime-aarch64.tar runtime-aarch64
 
       - name: Keep the runtime for the package
@@ -192,7 +192,7 @@ jobs:
 
       - name: Build and check the package
         working-directory: ${{ env.KIT }}
-        run: cmake --build --preset webos-release -j"$(nproc)" --target csweb-tv-ipk
+        run: $GITHUB_WORKSPACE/tools/retry-transient.sh cmake --build --preset webos-release -j"$(nproc)" --target csweb-tv-ipk
 
       - name: Upload the package
         uses: actions/upload-artifact@v4
@@ -303,7 +303,7 @@ jobs:
         if: steps.runtime-cache.outputs.cache-hit != 'true'
         run: |
           CSWEB_ARMV7_ART_DIR="$GITHUB_WORKSPACE/runtime/native/out/art-armv7" \
-            tools/build-runtime.sh --arch armv7
+            tools/retry-transient.sh tools/build-runtime.sh --arch armv7
           tar -C runtime/dist -cf runtime-armv7.tar runtime-armv7
 
       - name: Keep the runtime for the package
@@ -367,7 +367,7 @@ jobs:
 
       - name: Build and check the package
         working-directory: ${{ env.KIT }}
-        run: cmake --build build/webos-legacy -j"$(nproc)" --target csweb-tv-ipk
+        run: $GITHUB_WORKSPACE/tools/retry-transient.sh cmake --build build/webos-legacy -j"$(nproc)" --target csweb-tv-ipk
 
       - name: Upload the package
         uses: actions/upload-artifact@v4
