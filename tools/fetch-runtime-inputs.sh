@@ -27,11 +27,20 @@ while read -r sha path url; do
     if verified "$out" "$sha"; then kept=$((kept + 1)); continue; fi
     mkdir -p "$(dirname "$out")"
     ok=0
-    for src in ${MIRROR:+"$MIRROR/${path//\//_}"} "$url"; do
-        if curl -fsSL --retry 3 -o "$out.part" "$src" && verified "$out.part" "$sha"; then
-            mv "$out.part" "$out"
-            ok=1
-            break
+    # Two rounds over mirror then upstream, each with retries spread over about a minute: GitHub release
+    # downloads (the mirror, CloudStream) sometimes answer 5xx for a while.
+    for round in 1 2; do
+        for src in ${MIRROR:+"$MIRROR/${path//\//_}"} "$url"; do
+            if curl -fsSL --retry 5 --retry-delay 10 --connect-timeout 30 -o "$out.part" "$src" \
+                    && verified "$out.part" "$sha"; then
+                mv "$out.part" "$out"
+                ok=1
+                break 2
+            fi
+        done
+        if (( round == 1 )); then
+            echo "fetch-runtime-inputs: $path: no copy yet, trying again" >&2
+            sleep "${FETCH_RETRY_DELAY:-30}"
         fi
     done
     rm -f "$out.part"
