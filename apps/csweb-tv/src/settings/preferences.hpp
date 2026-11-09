@@ -40,6 +40,16 @@ inline constexpr const char *kSubtitleSize = "csweb_subtitle_size";  // percent 
 inline constexpr const char *kSubtitleBox = "csweb_subtitle_box";    // dark box instead of an outline
 inline constexpr const char *kPreferDolbyVision = "csweb_prefer_dolby_vision";  // prioritize Dolby Vision streams
 inline constexpr const char *kPreferDolbyAtmos = "csweb_prefer_dolby_atmos";    // prioritize Dolby Atmos streams
+inline constexpr const char *kDns = "dns_key";  // DNS over HTTPS (SettingsGeneral), CloudStream's dns_pref_values
+
+// CloudStream's "DNS over HTTPS" choices (arrays dns_pref / dns_pref_values; 3, OpenDNS, is unused).
+struct DnsChoice {
+    const char *name;
+    int value;
+};
+const std::vector<DnsChoice> &dns_choices();
+int dns_value(const SettingsStore &s);  // 0 (none) when unset or not one of the values
+int dns_index(int value);               // index into dns_choices(), 0 when unknown
 
 // TvType names in CloudStream's declaration order (the index is the ordinal).
 const std::vector<std::string> &tv_types();

@@ -33,6 +33,11 @@ public abstract class Context {
         return android.content.res.Resources.getSystem();
     }
 
+    /** The application's assets (org.csweb.compat.AppAssets): cloudstream.jar's, as the APK's on Android. */
+    public android.content.res.AssetManager getAssets() {
+        return org.csweb.compat.AppAssets.get();
+    }
+
     public android.content.pm.PackageManager getPackageManager() {
         return PACKAGE_MANAGER;
     }

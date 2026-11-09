@@ -239,6 +239,27 @@ std::vector<runtime::Provider> home_providers(const std::vector<runtime::Provide
     return out;
 }
 
+const std::vector<DnsChoice> &dns_choices() {
+    static const std::vector<DnsChoice> v = {{"None", 0},   {"Google", 1}, {"Cloudflare", 2}, {"AdGuard", 4},
+                                             {"DNS.WATCH", 5}, {"Quad9", 6}, {"DNS.SB", 7}, {"Canadian Shield", 8}};
+    return v;
+}
+
+int dns_index(int value) {
+    const auto &v = dns_choices();
+    for (size_t i = 0; i < v.size(); i++) {
+        if (v[i].value == value) return static_cast<int>(i);
+    }
+    return 0;
+}
+
+int dns_value(const SettingsStore &s) {
+    const long long v = s.get_int(kDns, 0);
+    return v >= 0 && v <= 8 && dns_choices()[static_cast<size_t>(dns_index(static_cast<int>(v)))].value == v
+               ? static_cast<int>(v)
+               : 0;
+}
+
 const std::vector<int> &quality_choices() {
     static const std::vector<int> v = {2160, 1440, 1080, 720, 480, 360, 240, 144};
     return v;

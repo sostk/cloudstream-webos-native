@@ -57,7 +57,7 @@ final class Service {
         Thread.setDefaultUncaughtExceptionHandler((thread, t) -> Main.error("thread:" + thread.getName(), t));
         UiHost.install(new Main.LoaderUi());
         Main.answers = Service::nextAnswer;
-        Main.initApp();
+        Main.initApp(data);
         int loadWorkers = Integer.parseInt(args.getOrDefault("load-workers", "3"));
         ExecutorService admin = Executors.newSingleThreadExecutor(daemon("csweb-admin"));
         ExecutorService ops = Executors.newFixedThreadPool(workers, daemon("csweb-op"));
@@ -105,6 +105,12 @@ final class Service {
             if (op.equals("cancel")) {
                 cancel(String.valueOf(req.get("target")), "cancelled");
                 Main.emit(Main.event("done", "id", id, "ok", true));
+                continue;
+            }
+            if (op.equals("network")) {
+                // Applied here, in order: every request sent after it (loads too, whose load() may
+                // fetch) uses the new resolver. Building the clients does no network I/O.
+                network(id, req.get("dns"));
                 continue;
             }
             if (running.containsKey(id)) {
@@ -308,6 +314,22 @@ final class Service {
     }
 
     /** Cancel a request: its coroutine is cancelled and its thread interrupted; it ends with done ok=false. */
+    /** The "network" request: CloudStream's DNS over HTTPS setting (Network), answered at once. */
+    private static void network(String id, Object dns) {
+        try {
+            if (!(dns instanceof Integer)) throw new IllegalArgumentException("dns must be a number (dns_pref_values)");
+            int clients = Network.apply((Integer) dns);
+            Main.emit(Main.event("network", "id", id, "dns", dns, "clients", clients));
+            Main.emit(Main.event("done", "id", id, "ok", true));
+        } catch (Throwable t) {
+            Throwable c = t instanceof java.lang.reflect.InvocationTargetException && t.getCause() != null ? t.getCause() : t;
+            Main.emit(Main.event("error", "id", id, "stage", "network", "type", c.getClass().getName(),
+                    "message", String.valueOf(c.getMessage())));
+            c.printStackTrace(System.err);
+            Main.emit(Main.event("done", "id", id, "ok", false));
+        }
+    }
+
     private static void cancel(String id, String why) {
         Running r = running.get(id);
         if (r == null || r.finished.get()) return;
