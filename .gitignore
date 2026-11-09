@@ -16,3 +16,4 @@ __pycache__/
 *.pyc
 *.dex
 /runtime/dist/
+/experiments/*/out/
