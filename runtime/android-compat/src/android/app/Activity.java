@@ -19,8 +19,11 @@ public class Activity extends android.view.ContextThemeWrapper {
 
     public void finish() {}
 
+    /** The UI thread is the runtime's main looper (android.os.Looper): now if on it, else posted there. */
     public void runOnUiThread(Runnable action) {
-        throw org.csweb.compat.Unsupported.of("Activity.runOnUiThread (no UI thread)");
+        android.os.Looper main = android.os.Looper.getMainLooper();
+        if (main.isCurrentThread()) action.run();
+        else new android.os.Handler(main).post(action);
     }
 
     public android.content.Intent getIntent() {

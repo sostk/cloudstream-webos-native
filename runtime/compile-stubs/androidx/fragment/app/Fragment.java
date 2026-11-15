@@ -24,4 +24,16 @@ public class Fragment {
     }
 
     public void onViewCreated(android.view.View view, android.os.Bundle savedInstanceState) {}
+
+    public void onStart() {}
+
+    public void onResume() {}
+
+    public void onPause() {}
+
+    public void onStop() {}
+
+    public void onDestroyView() {}
+
+    public void onDestroy() {}
 }

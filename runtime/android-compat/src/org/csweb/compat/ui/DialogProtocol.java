@@ -26,7 +26,7 @@ import java.util.WeakHashMap;
  * The dialog protocol between the runtime and the native app (docs/runtime/dialog-protocol.md).
  *
  * describe() turns a showing dialog into plain maps (title, message, buttons, list items and a view
- * tree of labels, text fields, checkboxes, switches and buttons, each with a stable "key"). The app
+ * tree of labels, text fields, checkboxes, switches, buttons and images, each with a stable "key"). The app
  * renders that with its own widgets and answers with a map:
  *
  *   {"dialog": id, "fields": {key: text | boolean}, "click": key, "item": n, "button": "positive" |
@@ -153,6 +153,15 @@ public final class DialogProtocol {
             CharSequence text = v instanceof TextView ? ((TextView) v).getText() : null;
             if (isBlank(text)) text = v.getContentDescription();
             m.put("text", isBlank(text) ? (v instanceof ImageView ? "Image button" : "Button") : str(text));
+        } else if (v instanceof ImageView && ((ImageView) v).getImageBitmap() != null) {
+            // A bitmap the plugin made (a login QR code): its encoded bytes, which the app draws.
+            android.graphics.Bitmap bm = ((ImageView) v).getImageBitmap();
+            m.put("type", "image");
+            m.put("mime", bm.mimeType());
+            m.put("width", bm.getWidth());
+            m.put("height", bm.getHeight());
+            m.put("data", java.util.Base64.getEncoder().encodeToString(bm.encodedBytes()));
+            if (!isBlank(v.getContentDescription())) m.put("text", str(v.getContentDescription()));
         } else if (v instanceof TextView) {
             m.put("type", "label");
             m.put("text", str(((TextView) v).getText()));
