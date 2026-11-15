@@ -130,7 +130,7 @@ void Application::on_start(wnk::app::Context &ctx) {
         services_.runtime_changed.emit();
         services_.plugins_changed.emit();  // Home shows a runtime failure
     };
-    dialogs_ = std::make_unique<ui::PluginDialogHost>(*runtime_);
+    dialogs_ = std::make_unique<ui::PluginDialogHost>(*runtime_, tmp + "/dialog-images");
     runtime_->on_dialog = [this, &ctx](const nlohmann::json &e) { dialogs_->handle(ctx.ui(), e); };
 
     if (wnk::platform::kIsWebOS) {
