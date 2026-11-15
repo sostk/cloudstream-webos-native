@@ -17,7 +17,7 @@ unchanged; only the Android framework classes underneath it are headless.
 |---|---|
 | `AlertDialog.Builder`: title, message, view (`setView(View)` or a layout id), positive/negative/neutral buttons, `setItems`, `setSingleChoiceItems`, `setMultiChoiceItems`, `setCancelable`, cancel/dismiss listeners | described and answered |
 | `Dialog.setContentView`, `dialog.getButton(…).setOnClickListener` (dialog stays open, as on Android) | supported |
-| Layouts from the plugin's resources via `LayoutInflater.inflate(resources.getLayout(id), …)` | framework widgets only: `LinearLayout`, `FrameLayout`, `RelativeLayout`, `ScrollView`, `TextView`, `EditText`, `Button`, `CheckBox`, `Switch`, `ImageView`, `ImageButton`, `View`/`Space`; `<merge>` as root, `<requestFocus>` |
+| Layouts from the plugin's resources via `LayoutInflater.inflate(resources.getLayout(id), …)` | framework widgets only: `LinearLayout`, `FrameLayout`, `RelativeLayout`, `ScrollView`, `TextView`, `EditText`, `Button`, `CheckBox`, `Switch`, `ImageView`, `ImageButton`, `View`/`Space`; `<merge>` as root, `<requestFocus>`; plus AndroidX `CardView` and Material `MaterialCardView` as plain containers |
 | Views built in code (`EditText(ctx)`, `LinearLayout(ctx).addView(…)`) | same widgets |
 | Clickable views that are not buttons (a `TextView` or `ImageButton` with an `OnClickListener`) | described as buttons, named by their text or `contentDescription` |
 | A `CheckBox`/`Switch` without text followed by a plain `TextView` (a row of box and label) | one control with the label's text |
@@ -85,10 +85,11 @@ the restored plugin data loads it again. Not yet run on a TV.
 
 ### Device-code login in a bottom sheet (issue #38)
 
-Kartoons v5 (`https://cloudstream.lasyhost.tech/Kartoons.cs3`, sha256 `7eec1302…3f56`; read with a
-DEX method-reference listing, not run) logs in with a device code. Its `openSettings` casts its
+Kartoons v5 (`https://cloudstream.lasyhost.tech/Kartoons.cs3`, sha256 `7eec1302…3f56`) logs in with a
+device code. Its `openSettings` casts its
 context to `AppCompatActivity` (its `load()` does not, so the plugin was loaded without an Activity) and
-shows `SettingsFragment`, a `BottomSheetDialogFragment` inflating `settings_fragment.xml`. In `onStart`
+shows `SettingsFragment`, a `BottomSheetDialogFragment` inflating `settings_fragment.xml` (its login
+controls inside a `MaterialCardView`, plus "Open in Browser" and "Logout" buttons). In `onStart`
 it expands the sheet through `BottomSheetDialog.getBehavior()`. "Get Login Code" posts to its API on
 `Dispatchers.IO`, then on `Dispatchers.Main` shows the code and a QR code (`BitmapFactory.decodeByteArray`
 into an `ImageView`), and polls the status with `Handler(Looper.getMainLooper()).postDelayed`; the token
@@ -96,15 +97,26 @@ goes to `SharedPreferences`. `onDestroyView` stops the polling. Every API it cal
 
 What makes it work: the settings call is retried with a headless `AppCompatActivity` when
 `openSettings` fails its cast (`compat` event, reason "openSettings casts its context to an Activity");
-the runtime's main looper and `Handler`; `BottomSheetDialog`/`BottomSheetBehavior`; the fragment's
-`onStart`/`onDestroyView`; `Bitmap`/`BitmapFactory`; and dialogs described again as they change.
+the runtime's main looper and `Handler`; `BottomSheetDialog`/`BottomSheetBehavior`; `MaterialCardView`;
+the fragment's `onStart`/`onDestroyView`; `Bitmap`/`BitmapFactory`; and dialogs described again as they
+change.
 
-Evidence (host ART, x86_64, 2026-11-16), without the plugin: compat tests (`looper`, `bitmaps`,
-`deviceLoginSheet`) on the JVM; on ART, `Dispatchers.Main` resolves to kotlinx's `HandlerContext` and
-runs on `csweb-main`, and a sheet changed by `postDelayed` work after a click was described four times
-(each change) and then followed as it closed (`answerDialogs ok=true`). The conformance plugin's
-settings still answer as before. **Kartoons itself has not been run** (downloaded plugin code needs a
-test plan first), nor any of this on a TV.
+Evidence (host ART, x86_64, 2026-11-16):
+
+- The unmodified plugin, run with the user's approval on the host only (a throwaway container, the
+  plugin mounted read-only, plugin data in the container's `/tmp`, no login made):
+  `evidence/runtime-host/runs/kartoons-settings-device-login.jsonl`. The login code and the QR image
+  (which encodes it) are redacted. Sequence:
+  - the sheet is described: "Get Login Code";
+  - the click shows "Generating code..." with the button disabled;
+  - 1.3 s later the code from Kartoons' API arrives, with "Open in Browser";
+  - then a 200×200 PNG QR code;
+  - then "Waiting for login... (9m remaining)" from its polling;
+  - a cancel closes it (`dialog_closed`, `done ok:true`).
+- Compat tests (`looper`, `bitmaps`, `deviceLoginSheet`) on the JVM.
+- On ART, `Dispatchers.Main` resolves to kotlinx's `HandlerContext` and runs on `csweb-main`.
+
+Not yet seen in the app's UI or on a TV.
 
 ## Messages
 

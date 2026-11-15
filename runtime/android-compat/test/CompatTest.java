@@ -489,6 +489,22 @@ public final class CompatTest {
                 + "{\"key\":\"v2\",\"type\":\"image\",\"mime\":\"image/png\",\"width\":4,\"height\":4,\"data\":\"" + data + "\"},"
                 + "{\"key\":\"v3\",\"enabled\":false,\"type\":\"button\",\"text\":\"Get Login Code\"}]}}", after);
 
+        // Kartoons wraps its controls in a MaterialCardView: a container, described as a column.
+        com.google.android.material.card.MaterialCardView card = new com.google.android.material.card.MaterialCardView(ctx);
+        android.widget.TextView inCard = new android.widget.TextView(ctx);
+        inCard.setText("Login");
+        card.addView(inCard);
+        card.setCheckable(true);
+        card.toggle();
+        eq("card checked state", true, card.isChecked());
+        eq("card is a CardView and a FrameLayout", true,
+                card instanceof androidx.cardview.widget.CardView && card instanceof android.widget.FrameLayout);
+        android.app.Dialog carded = new android.app.Dialog(ctx);
+        carded.setContentView(card);
+        eq("card described as a column", "{\"title\":null,\"cancelable\":true,\"view\":{\"key\":\"v0\",\"type\":\"column\",\"children\":["
+                + "{\"key\":\"v1\",\"type\":\"label\",\"text\":\"Login\"}]}}",
+                MiniJson.encode(org.csweb.compat.ui.DialogProtocol.describe(carded)));
+
         // ACTION_VIEW of a web link reaches the UI host; other intents stay unsupported.
         ctx.startActivity(new android.content.Intent(android.content.Intent.ACTION_VIEW, Uri.parse("https://example.test/link?code=ABCD")));
         eq("link shown by the app", java.util.Collections.singletonList("https://example.test/link?code=ABCD"), ui.urls);
