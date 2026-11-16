@@ -273,18 +273,28 @@ void RepositoryScreen::open_settings(Ui &ui, const plugins::InstalledPlugin &p) 
     // Plugin.openSettings runs in the runtime; its dialogs reach PluginDialogHost. When it ends the
     // plugin is loaded again so what it saved takes effect.
     auto opened = std::make_shared<bool>(false);
+    auto none = std::make_shared<bool>(false);  // the plugin has no settings (openSettings is null)
     const std::string id = p.id;
     s_.runtime->request({{"op", "settings"}, {"plugin", s_.plugins->plugin_path(p.id)}},
-                        [opened](const nlohmann::json &e) {
+                        [opened, none](const nlohmann::json &e) {
                             const std::string ev = e.value("event", "");
                             if (ev == "dialog") *opened = true;
                             if (ev == "settings" && e.value("available", false)) *opened = true;
+                            if (ev == "unsupported" && e.value("stage", "") == "settings" &&
+                                e.value("api", "").find("has no settings") != std::string::npos) {
+                                *none = true;
+                            }
                         },
-                        core::guarded(life_.weak(), [this, opened, id](bool ok, const std::string &error) {
+                        core::guarded(life_.weak(), [this, opened, none, id](bool ok, const std::string &error) {
                             Ui *u = this->ui();
-                            WNK_LOGI(kCat, "plugin settings ended: %s%s", ok ? "ok" : "failed: ", ok ? "" : error.c_str());
+                            WNK_LOGI(kCat, "plugin settings ended: %s%s", ok ? "ok" : "failed: ",
+                                     ok ? "" : *none ? "no settings" : error.c_str());
                             if (!ok && plugins::settings_need_activity(error)) {
                                 WNK_LOGW(kCat, "plugin settings: unsupported (needs an Android Activity/fragment)");
+                            }
+                            if (*none) {
+                                if (u) u->toast("This plugin has no settings.");
+                                return;
                             }
                             if (!ok && u) u->toast(plugins::settings_failure_message(error), 5000);
                             else if (!*opened && u) u->toast("This plugin has no settings.");

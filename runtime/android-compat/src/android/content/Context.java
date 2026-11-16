@@ -57,6 +57,9 @@ public abstract class Context {
             org.csweb.compat.ui.UiHost.get("Context.startActivity").openUrl(data.toString());
             return;
         }
+        // "Restart the app" after a plugin saved its settings: the native app loads the plugin again
+        // when the settings close (extensions_screen.cpp), so the restart has already been arranged.
+        if (intent != null && intent.isRestartTask()) return;
         throw org.csweb.compat.Unsupported.of("Context.startActivity");
     }
 

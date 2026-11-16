@@ -34,7 +34,8 @@ public class LayoutInflater {
     private static final String ANDROID = "http://schemas.android.com/apk/res/android";
     private static final Set<String> VIEWS = new HashSet<>(Arrays.asList(
             "View", "Space", "LinearLayout", "FrameLayout", "RelativeLayout", "ScrollView", "TextView", "EditText",
-            "Button", "CheckBox", "Switch", "ImageView", "ImageButton"));
+            "Button", "CheckBox", "Switch", "ImageView", "ImageButton",
+            "com.google.android.material.button.MaterialButton"));
     private static final Set<String> CARDS = new HashSet<>(Arrays.asList(
             "androidx.cardview.widget.CardView", "com.google.android.material.card.MaterialCardView"));
 
@@ -161,6 +162,9 @@ public class LayoutInflater {
             case "TextView": v = new TextView(context); break;
             case "EditText": v = new EditText(context); break;
             case "Button": v = new Button(context); break;
+            case "com.google.android.material.button.MaterialButton":
+                v = new com.google.android.material.button.MaterialButton(context);
+                break;
             case "CheckBox": v = new CheckBox(context); break;
             case "Switch": v = new Switch(context); break;
             default: v = new View(context);
