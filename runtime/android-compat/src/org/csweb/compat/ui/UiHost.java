@@ -27,4 +27,9 @@ public abstract class UiHost {
     public abstract void dismissed(android.app.Dialog dialog);
 
     public abstract void toast(CharSequence text, int duration);
+
+    /** A plugin asked to open a web page (Context.startActivity with ACTION_VIEW of an http(s) link). */
+    public void openUrl(String url) {
+        throw Unsupported.of("Context.startActivity (this UI host cannot show links)");
+    }
 }

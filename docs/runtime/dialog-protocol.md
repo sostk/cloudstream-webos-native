@@ -1,6 +1,6 @@
 # Plugin dialog protocol
 
-Status 2026-10-19. Implemented by `runtime/android-compat` (`android.app.AlertDialog`, `android.view.*`,
+Status 2026-11-16. Implemented by `runtime/android-compat` (`android.app.AlertDialog`, `android.os.Looper`, `android.view.*`,
 `android.widget.*`, `org.csweb.compat.ui.DialogProtocol`) and `runtime/csloader` (`--op settings`,
 `--ui stdin`). Host tests: `runtime/android-compat/test/CompatTest.java` (`ui()`).
 
@@ -17,23 +17,36 @@ unchanged; only the Android framework classes underneath it are headless.
 |---|---|
 | `AlertDialog.Builder`: title, message, view (`setView(View)` or a layout id), positive/negative/neutral buttons, `setItems`, `setSingleChoiceItems`, `setMultiChoiceItems`, `setCancelable`, cancel/dismiss listeners | described and answered |
 | `Dialog.setContentView`, `dialog.getButton(…).setOnClickListener` (dialog stays open, as on Android) | supported |
-| Layouts from the plugin's resources via `LayoutInflater.inflate(resources.getLayout(id), …)` | framework widgets only: `LinearLayout`, `FrameLayout`, `RelativeLayout`, `ScrollView`, `TextView`, `EditText`, `Button`, `CheckBox`, `Switch`, `ImageView`, `ImageButton`, `View`/`Space`; `<merge>` as root, `<requestFocus>` |
+| Layouts from the plugin's resources via `LayoutInflater.inflate(resources.getLayout(id), …)` | framework widgets only: `LinearLayout`, `FrameLayout`, `RelativeLayout`, `ScrollView`, `TextView`, `EditText`, `Button`, `CheckBox`, `Switch`, `ImageView`, `ImageButton`, `View`/`Space`; `<merge>` as root, `<requestFocus>`; plus AndroidX `CardView` and Material `MaterialCardView` as plain containers |
 | Views built in code (`EditText(ctx)`, `LinearLayout(ctx).addView(…)`) | same widgets |
 | Clickable views that are not buttons (a `TextView` or `ImageButton` with an `OnClickListener`) | described as buttons, named by their text or `contentDescription` |
 | A `CheckBox`/`Switch` without text followed by a plain `TextView` (a row of box and label) | one control with the label's text |
 | `androidx.appcompat.app.AlertDialog.Builder` | as the framework builder (the runtime's own class replaces the APK's, which needs a window) |
-| Material `BottomSheetDialogFragment` subclasses shown with `show(activity.getSupportFragmentManager(), tag)` | `onCreate`, `onCreateView`, `onViewCreated`, then the view as a dialog; `dismiss()` closes it (see below) |
+| Material `BottomSheetDialogFragment` subclasses shown with `show(activity.getSupportFragmentManager(), tag)` | `onCreate`, `onCreateView`, `onViewCreated`, the view as a `BottomSheetDialog`, then `onStart`; closing runs `onStop`, `onDestroyView`, `onDestroy` (see below) |
+| `BottomSheetDialog`, its `getBehavior()` (`state`, `skipCollapsed`, `isDraggable`, peek height, callbacks) | a dialog; the behaviour's settings are kept and change nothing (the app lays the sheet out) |
+| `Handler`/`Looper` (`Looper.getMainLooper()`, `post`, `postDelayed`, messages), `Dispatchers.Main`, `Activity.runOnUiThread` | run on the runtime's main looper, a thread of its own, as on Android's UI thread (see below) |
+| `BitmapFactory.decode*` + `ImageView.setImageBitmap` (PNG, JPEG, GIF, WebP up to 4 MiB) | an `image` the app draws (a login QR code); pixel graphics (`createBitmap`, `Canvas`) unsupported |
+| `context.startActivity(Intent(ACTION_VIEW, Uri.parse("https://…")))` | `open_url` event: the app shows the link to open on a phone; other intents unsupported |
+| `openSettings` casting its context to an Activity type (`context as AppCompatActivity`) | called again with a headless instance of that type (see below) |
 | `Resources.getDrawable` / `ResourcesCompat.getDrawable` | a named placeholder that views keep; nothing is drawn |
 | `Toast.makeText(…).show()` | `toast` event |
-| Custom view classes, other AndroidX/Material views, `<include>`, `<fragment>`, other `DialogFragment`s and fragment transactions, `BottomSheetDialog` on its own, `PreferenceFragment` | reported `unsupported` (named API) or failing with the Android error, which the app shows as "an Android screen CSWeb TV cannot show yet" when it names an Activity type |
+| Custom view classes, other AndroidX/Material views, `<include>`, `<fragment>`, other `DialogFragment`s and fragment transactions, `PreferenceFragment` | reported `unsupported` (named API) or failing with the Android error, which the app shows as "an Android screen CSWeb TV cannot show yet" when it names an Activity type |
 
 Layout and styling attributes (sizes, margins, colours, fonts) are ignored: the app lays dialogs out
 for a TV. As on Android, `LayoutInflater.from(context).inflate(<plugin layout id>)` with CloudStream's
 context does not see plugin resources; plugins must use their own `Resources` (they do so on Android too).
 
-`openSettings` receives the headless application context (CloudStream passes its Activity). Callbacks
-run on the runtime's main thread, the thread that called `openSettings`, as dialog callbacks run on the
-UI thread on Android.
+`openSettings` receives the context the plugin was loaded with: the headless application context, or a
+headless Activity for plugins that needed one (CloudStream passes its Activity). It runs on the runtime's
+main looper (`Looper.getMainLooper()`, thread `csweb-main`), and so do every listener the dialog
+protocol calls and every `Handler` callback or `Dispatchers.Main` coroutine the plugin starts, one at a
+time, as on Android's UI thread. kotlinx-coroutines' Android `Dispatchers.Main` comes from CloudStream's
+APK (`AndroidDispatcherFactory`, built on `Handler`) unchanged. A callback that throws is reported on
+stderr and the looper goes on.
+
+While a dialog waits for the app, the runtime describes it again every 250 ms when that main-thread work
+changed it (new text, an image, a button enabled or hidden), and follows it when the work closes it or
+opens another. Requests without dialogs never wait for the main looper.
 
 ### Settings as a Material bottom sheet (issue #21)
 
@@ -70,6 +83,41 @@ shows "Restart Required" (Yes/No) and writes `shared_prefs/PlayFy.json` = `{"JIO
 opens the sheet, a box ticked and saved, Yes, the plugin is reloaded with "📺 News", and after a restart
 the restored plugin data loads it again. Not yet run on a TV.
 
+### Device-code login in a bottom sheet (issue #38)
+
+Kartoons v5 (`https://cloudstream.lasyhost.tech/Kartoons.cs3`, sha256 `7eec1302…3f56`) logs in with a
+device code. Its `openSettings` casts its
+context to `AppCompatActivity` (its `load()` does not, so the plugin was loaded without an Activity) and
+shows `SettingsFragment`, a `BottomSheetDialogFragment` inflating `settings_fragment.xml` (its login
+controls inside a `MaterialCardView`, plus "Open in Browser" and "Logout" buttons). In `onStart`
+it expands the sheet through `BottomSheetDialog.getBehavior()`. "Get Login Code" posts to its API on
+`Dispatchers.IO`, then on `Dispatchers.Main` shows the code and a QR code (`BitmapFactory.decodeByteArray`
+into an `ImageView`), and polls the status with `Handler(Looper.getMainLooper()).postDelayed`; the token
+goes to `SharedPreferences`. `onDestroyView` stops the polling. Every API it calls is listed above.
+
+What makes it work: the settings call is retried with a headless `AppCompatActivity` when
+`openSettings` fails its cast (`compat` event, reason "openSettings casts its context to an Activity");
+the runtime's main looper and `Handler`; `BottomSheetDialog`/`BottomSheetBehavior`; `MaterialCardView`;
+the fragment's `onStart`/`onDestroyView`; `Bitmap`/`BitmapFactory`; and dialogs described again as they
+change.
+
+Evidence (host ART, x86_64, 2026-11-16):
+
+- The unmodified plugin, run with the user's approval on the host only (a throwaway container, the
+  plugin mounted read-only, plugin data in the container's `/tmp`, no login made):
+  `evidence/runtime-host/runs/kartoons-settings-device-login.jsonl`. The login code and the QR image
+  (which encodes it) are redacted. Sequence:
+  - the sheet is described: "Get Login Code";
+  - the click shows "Generating code..." with the button disabled;
+  - 1.3 s later the code from Kartoons' API arrives, with "Open in Browser";
+  - then a 200×200 PNG QR code;
+  - then "Waiting for login... (9m remaining)" from its polling;
+  - a cancel closes it (`dialog_closed`, `done ok:true`).
+- Compat tests (`looper`, `bitmaps`, `deviceLoginSheet`) on the JVM.
+- On ART, `Dispatchers.Main` resolves to kotlinx's `HandlerContext` and runs on `csweb-main`.
+
+Not yet seen in the app's UI or on a TV.
+
 ## Messages
 
 Runtime → app, JSON lines on stdout:
@@ -87,7 +135,15 @@ Runtime → app, JSON lines on stdout:
 ```
 
 - View `type`: `column`, `row` (with `children`), `label`, `text-field`, `checkbox`, `switch`, `toggle`,
-  `button`, `space`. Optional `"enabled": false`. Hidden (`GONE`/`INVISIBLE`) views are left out.
+  `button`, `image`, `space`. Optional `"enabled": false`. Hidden (`GONE`/`INVISIBLE`) views are left out.
+- `image`: `mime` (`image/png`, `image/jpeg`, `image/gif`, `image/webp`), `width`, `height` (from the
+  image's header) and `data`, the encoded bytes in base64 (at most 4 MiB); optional `text` (the content
+  description). The app checks the bytes match the type, writes them to `<tmp>/dialog-images/<sha256>.<ext>`
+  and draws them up to 360 px.
+- A dialog may be described again with the same `dialog` id at any time: after an answer, or because
+  plugin code changed it. The app redraws it in place and keeps focus on the view with the same key.
+- `{"event":"open_url","url":"https://…"}`: the plugin asked to open a web page; the app shows the link
+  (it may carry a login code, so it is never logged).
 - `key`: the resource entry name of the view's id (`name_field`), else `id<n>` for an id set in code,
   else `v<n>` (position in the tree). Keys are what answers refer to.
 - `text-field` `input`: `text`, `number`, `phone`, `datetime`, `email`, `uri`, `password`. For

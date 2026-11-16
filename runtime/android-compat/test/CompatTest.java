@@ -144,6 +144,8 @@ public final class CompatTest {
         @Override public void shown(android.app.Dialog d) { shown.add(d); }
         @Override public void dismissed(android.app.Dialog d) { shown.remove(d); }
         @Override public void toast(CharSequence text, int duration) { toasts.add(text + "/" + duration); }
+        final java.util.List<String> urls = new java.util.ArrayList<>();
+        @Override public void openUrl(String url) { urls.add(url); }
     }
 
     @SuppressWarnings("unchecked")
@@ -312,6 +314,9 @@ public final class CompatTest {
         resources();
         ui();
         settingsSheetViews();
+        looper();
+        bitmaps();
+        deviceLoginSheet();
         base64();
         uri();
         json();
@@ -362,6 +367,205 @@ public final class CompatTest {
         javax.net.ssl.SSLContext c = javax.net.ssl.SSLContext.getInstance(protocol);
         c.init(null, null, null);
         return c;
+    }
+
+    /** android.os.Looper/Handler: the main looper's thread, order by time then posting, removal, messages. */
+    static void looper() throws Exception {
+        android.os.Looper main = android.os.Looper.getMainLooper();
+        eq("main looper is a singleton", true, main == android.os.Looper.getMainLooper());
+        eq("main looper thread", "csweb-main", main.getThread().getName());
+        eq("caller is not on it", false, main.isCurrentThread());
+        eq("no looper on this thread", null, android.os.Looper.myLooper());
+        boolean threw = false;
+        try {
+            new android.os.Handler();
+        } catch (RuntimeException e) {
+            threw = true;
+        }
+        eq("Handler() without a looper throws", true, threw);
+
+        android.os.Handler h = new android.os.Handler(main);
+        final java.util.List<String> order = java.util.Collections.synchronizedList(new java.util.ArrayList<String>());
+        final java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(1);
+        Runnable never = () -> order.add("removed");
+        h.postDelayed(() -> { order.add("late"); done.countDown(); }, 80);
+        h.postDelayed(never, 40);
+        h.post(() -> order.add("first:" + (android.os.Looper.myLooper() == main)));
+        h.post(() -> order.add("second"));
+        eq("has callbacks", true, h.hasCallbacks(never));
+        h.removeCallbacks(never);
+        eq("removed", false, h.hasCallbacks(never));
+        done.await(5, java.util.concurrent.TimeUnit.SECONDS);
+        eq("run in order, on the main looper", java.util.Arrays.asList("first:true", "second", "late"), new java.util.ArrayList<>(order));
+
+        final java.util.concurrent.atomic.AtomicInteger what = new java.util.concurrent.atomic.AtomicInteger();
+        final java.util.concurrent.CountDownLatch got = new java.util.concurrent.CountDownLatch(1);
+        android.os.Handler withCallback = new android.os.Handler(main, m -> {
+            what.set(m.what * 10 + m.arg1);
+            got.countDown();
+            return true;
+        });
+        withCallback.sendMessage(withCallback.obtainMessage(4, 2, 0));
+        got.await(5, java.util.concurrent.TimeUnit.SECONDS);
+        eq("message to callback", 42, what.get());
+
+        // A throwing callback is reported; the loop keeps serving.
+        h.post(() -> { throw new IllegalStateException("plugin bug (expected in this test)"); });
+        eq("runOnMain after a throwing callback", "csweb-main", android.os.Looper.runOnMain(() -> Thread.currentThread().getName()));
+        threw = false;
+        try {
+            android.os.Looper.runOnMain(() -> { throw new IllegalArgumentException("x"); });
+        } catch (IllegalArgumentException e) {
+            threw = true;
+        }
+        eq("runOnMain rethrows", true, threw);
+        eq("createAsync", main, android.os.Handler.createAsync(main).getLooper());
+    }
+
+    /** A PNG IHDR, a GIF and a JPEG SOF0 header of the given size (enough for BitmapFactory's sniffing). */
+    static byte[] png(int w, int h) {
+        byte[] b = new byte[33];
+        byte[] head = {(byte) 0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n', 0, 0, 0, 13, 'I', 'H', 'D', 'R'};
+        System.arraycopy(head, 0, b, 0, head.length);
+        for (int i = 0; i < 4; i++) {
+            b[16 + i] = (byte) (w >>> (24 - 8 * i));
+            b[20 + i] = (byte) (h >>> (24 - 8 * i));
+        }
+        return b;
+    }
+
+    static void bitmaps() {
+        android.graphics.Bitmap bm = android.graphics.BitmapFactory.decodeByteArray(png(300, 200), 0, 33);
+        eq("png size", "300x200 image/png", bm.getWidth() + "x" + bm.getHeight() + " " + bm.mimeType());
+        eq("bytes kept", 33, bm.encodedBytes().length);
+        byte[] gif = {'G', 'I', 'F', '8', '9', 'a', 10, 0, 5, 0};
+        eq("gif size", 10 * 5, android.graphics.BitmapFactory.decodeByteArray(gif, 0, gif.length).getWidth() * 5);
+        byte[] jpeg = {(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, (byte) 0xE0, 0, 4, 0, 0,
+                (byte) 0xFF, (byte) 0xC0, 0, 11, 8, 0, 64, 0, (byte) 128, 3, 0, 0, 0, 0, 0};
+        android.graphics.Bitmap j = android.graphics.BitmapFactory.decodeByteArray(jpeg, 0, jpeg.length);
+        eq("jpeg size past APP0", "128x64 image/jpeg", j.getWidth() + "x" + j.getHeight() + " " + j.mimeType());
+        eq("not an image gives null", null, android.graphics.BitmapFactory.decodeByteArray(new byte[]{1, 2, 3, 4}, 0, 4));
+        android.graphics.BitmapFactory.Options o = new android.graphics.BitmapFactory.Options();
+        o.inJustDecodeBounds = true;
+        eq("bounds only returns null", null, android.graphics.BitmapFactory.decodeByteArray(png(7, 9), 0, 33, o));
+        eq("bounds filled", "7x9 image/png", o.outWidth + "x" + o.outHeight + " " + o.outMimeType);
+        boolean threw = false;
+        try {
+            android.graphics.BitmapFactory.decodeByteArray(new byte[4], 2, 3);
+        } catch (ArrayIndexOutOfBoundsException e) {
+            threw = true;
+        }
+        eq("range checked", true, threw);
+        eq("stream", 300, android.graphics.BitmapFactory.decodeStream(new java.io.ByteArrayInputStream(png(300, 1))).getWidth());
+    }
+
+    /**
+     * A device-code login sheet built like Kartoons' (issue #38): a BottomSheetDialog expanded through its
+     * behaviour, a button that fetches a code on the main looper later (Handler.postDelayed, as its
+     * polling does), a QR bitmap shown in an ImageView that was hidden, a link opened with ACTION_VIEW,
+     * and the sheet closing itself when the login completes. Built and changed on the main looper.
+     */
+    static void deviceLoginSheet() throws Exception {
+        File dir = Files.createTempDirectory("csweb-login").toFile();
+        final HeadlessContext ctx = new HeadlessContext(dir, "test.app");
+        final TestUi ui = new TestUi();
+        org.csweb.compat.ui.UiHost.install(ui);
+        final android.os.Handler main = new android.os.Handler(android.os.Looper.getMainLooper());
+        final com.google.android.material.bottomsheet.BottomSheetDialog[] sheet = {null};
+        final android.widget.TextView[] status = {null};
+        final java.util.concurrent.CountDownLatch codeShown = new java.util.concurrent.CountDownLatch(1);
+        android.os.Looper.runOnMain(() -> {
+            android.widget.LinearLayout root = new android.widget.LinearLayout(ctx);
+            root.setOrientation(android.widget.LinearLayout.VERTICAL);
+            android.widget.TextView text = new android.widget.TextView(ctx);
+            text.setText("Click below to get a login code");
+            final android.widget.ImageView qr = new android.widget.ImageView(ctx);
+            qr.setVisibility(android.view.View.GONE);
+            final android.widget.Button get = new android.widget.Button(ctx);
+            get.setText("Get Login Code");
+            get.setOnClickListener(v -> {
+                get.setEnabled(false);
+                text.setText("Generating code...");
+                main.postDelayed(() -> {
+                    text.setText("Enter this code at https://example.test/link: ABCD");
+                    qr.setImageBitmap(android.graphics.BitmapFactory.decodeByteArray(png(4, 4), 0, 33));
+                    qr.setVisibility(android.view.View.VISIBLE);
+                    codeShown.countDown();
+                }, 50);
+            });
+            root.addView(text);
+            root.addView(qr);
+            root.addView(get);
+            com.google.android.material.bottomsheet.BottomSheetDialog d =
+                    new com.google.android.material.bottomsheet.BottomSheetDialog(ctx);
+            d.setContentView(root);
+            d.show();
+            d.getBehavior().setState(com.google.android.material.bottomsheet.BottomSheetBehavior.STATE_EXPANDED);
+            d.getBehavior().setSkipCollapsed(true);
+            d.getBehavior().setDraggable(false);
+            sheet[0] = d;
+            status[0] = text;
+            return null;
+        });
+        com.google.android.material.bottomsheet.BottomSheetBehavior<?> behavior = sheet[0].getBehavior();
+        eq("behaviour kept", "3 true false", behavior.getState() + " " + behavior.getSkipCollapsed() + " " + behavior.isDraggable());
+        boolean threw = false;
+        try {
+            behavior.setState(com.google.android.material.bottomsheet.BottomSheetBehavior.STATE_DRAGGING);
+        } catch (IllegalArgumentException e) {
+            threw = true;
+        }
+        eq("dragging cannot be set", true, threw);
+        String before = MiniJson.encode(android.os.Looper.runOnMain(() -> org.csweb.compat.ui.DialogProtocol.describe(sheet[0])));
+        eq("hidden image left out", "{\"title\":null,\"cancelable\":true,\"view\":{\"key\":\"v0\",\"type\":\"column\",\"children\":["
+                + "{\"key\":\"v1\",\"type\":\"label\",\"text\":\"Click below to get a login code\"},"
+                + "{\"key\":\"v3\",\"type\":\"button\",\"text\":\"Get Login Code\"}]}}", before);
+        android.os.Looper.runOnMain(() -> {
+            org.csweb.compat.ui.DialogProtocol.answer(sheet[0], answer("{\"click\":\"v3\"}"));
+            return null;
+        });
+        eq("click handled at once", "Generating code...", android.os.Looper.runOnMain(() -> status[0].getText().toString()));
+        codeShown.await(5, java.util.concurrent.TimeUnit.SECONDS);
+        String after = MiniJson.encode(android.os.Looper.runOnMain(() -> org.csweb.compat.ui.DialogProtocol.describe(sheet[0])));
+        String data = java.util.Base64.getEncoder().encodeToString(png(4, 4));
+        eq("code, QR image and disabled button described", "{\"title\":null,\"cancelable\":true,\"view\":{\"key\":\"v0\",\"type\":\"column\",\"children\":["
+                + "{\"key\":\"v1\",\"type\":\"label\",\"text\":\"Enter this code at https://example.test/link: ABCD\"},"
+                + "{\"key\":\"v2\",\"type\":\"image\",\"mime\":\"image/png\",\"width\":4,\"height\":4,\"data\":\"" + data + "\"},"
+                + "{\"key\":\"v3\",\"enabled\":false,\"type\":\"button\",\"text\":\"Get Login Code\"}]}}", after);
+
+        // Kartoons wraps its controls in a MaterialCardView: a container, described as a column.
+        com.google.android.material.card.MaterialCardView card = new com.google.android.material.card.MaterialCardView(ctx);
+        android.widget.TextView inCard = new android.widget.TextView(ctx);
+        inCard.setText("Login");
+        card.addView(inCard);
+        card.setCheckable(true);
+        card.toggle();
+        eq("card checked state", true, card.isChecked());
+        eq("card is a CardView and a FrameLayout", true,
+                card instanceof androidx.cardview.widget.CardView && card instanceof android.widget.FrameLayout);
+        android.app.Dialog carded = new android.app.Dialog(ctx);
+        carded.setContentView(card);
+        eq("card described as a column", "{\"title\":null,\"cancelable\":true,\"view\":{\"key\":\"v0\",\"type\":\"column\",\"children\":["
+                + "{\"key\":\"v1\",\"type\":\"label\",\"text\":\"Login\"}]}}",
+                MiniJson.encode(org.csweb.compat.ui.DialogProtocol.describe(carded)));
+
+        // ACTION_VIEW of a web link reaches the UI host; other intents stay unsupported.
+        ctx.startActivity(new android.content.Intent(android.content.Intent.ACTION_VIEW, Uri.parse("https://example.test/link?code=ABCD")));
+        eq("link shown by the app", java.util.Collections.singletonList("https://example.test/link?code=ABCD"), ui.urls);
+        threw = false;
+        try {
+            ctx.startActivity(new android.content.Intent(android.content.Intent.ACTION_VIEW, Uri.parse("market://details?id=x")));
+        } catch (org.csweb.compat.Unsupported e) {
+            threw = true;
+        }
+        eq("other intents unsupported", true, threw);
+
+        final java.util.concurrent.CountDownLatch closed = new java.util.concurrent.CountDownLatch(1);
+        sheet[0].setOnDismissListener(d -> closed.countDown());
+        main.postDelayed(() -> sheet[0].dismiss(), 10);  // login complete: the plugin closes its sheet
+        closed.await(5, java.util.concurrent.TimeUnit.SECONDS);
+        eq("closed by main-thread work", false, sheet[0].isShowing());
+        eq("host told", true, ui.shown.isEmpty());
     }
 
     /**

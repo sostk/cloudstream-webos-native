@@ -70,9 +70,21 @@ public final class Main {
 
     /** Where dialog answers come from; null when no app is attached (dialogs are reported only). */
     interface Answers {
-        /** The next answer for dialog {@code id}, or null when the app closed the channel. */
-        Map<String, Object> next(int id) throws Exception;
+        /**
+         * The next answer for dialog {@code id}: null when the app closed the channel, {@link #NO_ANSWER_YET}
+         * when none came within {@code timeoutMs}.
+         */
+        Map<String, Object> next(int id, long timeoutMs) throws Exception;
     }
+
+    /** Answers.next: nothing yet. Compared by identity. */
+    static final Map<String, Object> NO_ANSWER_YET = java.util.Collections.unmodifiableMap(new LinkedHashMap<String, Object>());
+
+    /**
+     * The service request whose plugin UI is open on the main looper (Looper.getMainLooper()): dialogs that
+     * main-thread work shows later (a Handler callback, Dispatchers.Main) belong to it.
+     */
+    static volatile String mainOwner;
 
     static Answers answers;
 
@@ -405,9 +417,11 @@ public final class Main {
     // --- plugin UI: settings and dialogs ---------------------------------------------------------
 
     /**
-     * CloudStream's settings button: openSettings(context), then the dialogs it shows. CloudStream passes
-     * its Activity; the headless runtime passes the application context, so plugins that need an
-     * Activity's fragment manager or custom views fail with an unsupported report.
+     * CloudStream's settings button: openSettings(context) on the main (UI) thread, then the dialogs it
+     * shows. CloudStream passes its Activity; the runtime passes the context the plugin was loaded with.
+     * When openSettings casts that to an Activity type (Kartoons: `context as AppCompatActivity`, issue
+     * #38), it is called again with a headless instance of exactly that type, which later settings
+     * reuse. Plugins that need custom views still fail with an unsupported report.
      */
     static boolean settings(BasePlugin plugin) {
         kotlin.jvm.functions.Function1<android.content.Context, Unit> open =
@@ -416,14 +430,31 @@ public final class Main {
             emit(event("unsupported", "api", "plugin has no settings (openSettings is null)", "stage", "settings"));
             return false;
         }
+        final String owner = REQUEST.get();
+        if (owner != null) mainOwner = owner;
         try {
-            android.content.Context context = CONTEXTS.get(plugin);
-            open.invoke(context != null ? context : appContext);
-        } catch (Throwable t) {
-            error("settings", t);
-            return false;
+            try {
+                android.content.Context given = CONTEXTS.get(plugin);
+                final android.content.Context context = given != null ? given : appContext;
+                try {
+                    onMain(owner, () -> open.invoke(context));
+                } catch (ClassCastException e) {
+                    Class<?> wanted = activityTypeFrom(e, plugin.getClass().getClassLoader());
+                    if (wanted == null || context instanceof android.app.Activity || !(context instanceof HeadlessContext)) throw e;
+                    android.app.Activity activity = HeadlessActivities.create(wanted, context);
+                    emit(event("compat", "context", "headless-activity", "type", wanted.getName(),
+                            "reason", "openSettings casts its context to an Activity"));
+                    CONTEXTS.put(plugin, activity);
+                    onMain(owner, () -> open.invoke(activity));
+                }
+            } catch (Throwable t) {
+                error("settings", t);
+                return false;
+            }
+            return answerDialogs("settings");
+        } finally {
+            if (owner != null && owner.equals(mainOwner)) mainOwner = null;
         }
-        return answerDialogs("settings");
     }
 
     static final class LoaderUi extends UiHost {
@@ -437,6 +468,8 @@ public final class Main {
         @Override public synchronized void shown(android.app.Dialog d) {
             if (!ids.containsKey(d)) ids.put(d, next++);
             String owner = REQUEST.get();
+            // Shown later by main-thread work (a Handler callback, Dispatchers.Main) of the settings open there.
+            if (owner == null && android.os.Looper.getMainLooper().isCurrentThread()) owner = mainOwner;
             if (owner != null) owners.put(d, owner);
             showing.add(d);
         }
@@ -454,6 +487,15 @@ public final class Main {
             emit(event("toast", "text", String.valueOf(text), "long", duration != 0));
         }
 
+        /** Only http(s) links reach here (Context.startActivity); the app shows them to the viewer. */
+        @Override public void openUrl(String url) {
+            emit(event("open_url", "url", url));
+        }
+
+        synchronized boolean known(int id) {
+            return ids.containsValue(id);
+        }
+
         /** The newest showing dialog shown by {@code owner} (null: by the one-shot loader or any thread). */
         synchronized android.app.Dialog top(String owner) {
             for (int i = showing.size() - 1; i >= 0; i--) {
@@ -468,13 +510,33 @@ public final class Main {
         }
     }
 
-    private static BufferedReader uiInput;
+    /** One-shot mode (--ui stdin): stdin lines, read by a thread of their own so waiting can time out. */
+    private static java.util.concurrent.BlockingQueue<Object> uiLines;
+    private static final Object END_OF_INPUT = new Object();
 
     /** One-shot mode (--ui stdin): the next stdin line is the answer to the dialog just described. */
-    private static Map<String, Object> readAnswer(int id) throws IOException {
-        if (uiInput == null) uiInput = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
-        String line = uiInput.readLine();
-        return line == null ? null : parseAnswer(line);
+    private static synchronized Map<String, Object> readAnswer(int id, long timeoutMs) throws Exception {
+        if (uiLines == null) {
+            uiLines = new java.util.concurrent.LinkedBlockingQueue<>();
+            Thread reader = new Thread(() -> {
+                BufferedReader in = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
+                try {
+                    for (String line; (line = in.readLine()) != null; ) uiLines.add(line);
+                } catch (IOException e) {
+                    // treated as the end of input
+                }
+                uiLines.add(END_OF_INPUT);
+            }, "csweb-ui-stdin");
+            reader.setDaemon(true);
+            reader.start();
+        }
+        Object line = uiLines.poll(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS);
+        if (line == null) return NO_ANSWER_YET;
+        if (line == END_OF_INPUT) {
+            uiLines.add(END_OF_INPUT);  // every later wait sees it too
+            return null;
+        }
+        return parseAnswer((String) line);
     }
 
     static Map<String, Object> parseAnswer(String line) {
@@ -485,18 +547,44 @@ public final class Main {
         return answer;
     }
 
+    /** How often a waiting dialog is described again, to send what plugin code changed meanwhile. */
+    static final long DIALOG_REFRESH_MS = 250;
+
     /**
      * Describe the newest dialog the current request showed, wait for the app's answer, apply it; repeat
-     * until none is showing. Answers run on this thread (the one that showed the dialog), as dialog
-     * callbacks run on the thread that owns the dialog on Android.
+     * until none is showing. Plugin UI lives on the main looper, as on Android's UI thread: describing and
+     * answering run there, and so do the Handler and Dispatchers.Main work a dialog starts. While waiting,
+     * the dialog is described again whenever that work changed it (a login code that arrived, a status
+     * line), and a dialog it closes or opens is followed.
      */
     static boolean answerDialogs(String stage) {
         LoaderUi ui = (LoaderUi) UiHost.get("dialogs");
-        String owner = REQUEST.get();
-        for (int round = 0; round < 200; round++) {
-            android.app.Dialog d = ui.top(owner);
-            if (d == null) return true;
-            int id = ui.id(d);
+        final String owner = REQUEST.get();
+        Map<String, Object> sent = null;
+        int sentId = -1;
+        int answered = 0;
+        while (true) {
+            // Looked up here first: a request without dialogs (most searches) never waits for the main looper.
+            if (ui.top(owner) == null) return true;
+            final Object[] top = new Object[3];  // dialog, id, description
+            try {
+                onMain(owner, () -> {
+                    android.app.Dialog d = ui.top(owner);
+                    if (d != null) {
+                        top[0] = d;
+                        top[1] = ui.id(d);
+                        top[2] = DialogProtocol.describe(d);
+                    }
+                    return null;
+                });
+            } catch (Throwable t) {
+                error("dialog", t);
+                return false;
+            }
+            if (top[0] == null) return true;
+            android.app.Dialog d = (android.app.Dialog) top[0];
+            int id = (Integer) top[1];
+            @SuppressWarnings("unchecked") Map<String, Object> description = (Map<String, Object>) top[2];
             if (answers == null) {
                 // Without an app attached each dialog is reported once and stays open, unanswered.
                 synchronized (ui) {
@@ -510,25 +598,58 @@ public final class Main {
                 return true;
             }
             try {
-                Map<String, Object> m = event("dialog", "dialog", id, "stage", stage);
-                m.putAll(DialogProtocol.describe(d));
-                emit(m);
-                Map<String, Object> answer = answers.next(id);
+                if (id != sentId || !description.equals(sent)) {
+                    Map<String, Object> m = event("dialog", "dialog", id, "stage", stage);
+                    m.putAll(description);
+                    emit(m);
+                    sent = description;
+                    sentId = id;
+                }
+                Map<String, Object> answer = answers.next(id, DIALOG_REFRESH_MS);
+                if (answer == NO_ANSWER_YET) continue;
                 if (answer == null) {
                     emit(event("error", "stage", "dialog", "type", "EndOfInput", "message", "the app closed the dialog channel"));
                     return false;
                 }
-                if (!Integer.valueOf(id).equals(answer.get("dialog"))) {
-                    throw new IllegalArgumentException("answer for dialog " + answer.get("dialog") + ", expected " + id);
+                Object to = answer.get("dialog");
+                if (!Integer.valueOf(id).equals(to)) {
+                    // An answer to a dialog the plugin has closed or covered since: the viewer acted on what
+                    // was on screen a moment ago. Anything else is a protocol error.
+                    if (to instanceof Integer && ui.known((Integer) to)) continue;
+                    throw new IllegalArgumentException("answer for dialog " + to + ", expected " + id);
                 }
-                DialogProtocol.answer(d, answer);  // answer contents (typed text, passwords) are never logged
+                if (++answered > 200) {
+                    emit(event("error", "stage", "dialog", "type", "TooManyDialogs", "message", "more than 200 dialog rounds"));
+                    return false;
+                }
+                // answer contents (typed text, passwords) are never logged
+                onMain(owner, () -> {
+                    DialogProtocol.answer(d, answer);
+                    return null;
+                });
+                sent = null;  // described again after every answer, changed or not
             } catch (Throwable t) {
                 error("dialog", t);
                 return false;
             }
         }
-        emit(event("error", "stage", "dialog", "type", "TooManyDialogs", "message", "more than 200 dialog rounds"));
-        return false;
+    }
+
+    /**
+     * Runs plugin UI code on the main looper for request `owner`, whose id then tags what that code shows
+     * and emits, and returns once it ran.
+     */
+    static <T> T onMain(String owner, java.util.concurrent.Callable<T> task) throws Exception {
+        return android.os.Looper.runOnMain(() -> {
+            String before = REQUEST.get();
+            if (owner != null) REQUEST.set(owner);
+            try {
+                return task.call();
+            } finally {
+                if (before != null) REQUEST.set(before);
+                else REQUEST.remove();
+            }
+        });
     }
 
     // --- provider operations --------------------------------------------------------------------

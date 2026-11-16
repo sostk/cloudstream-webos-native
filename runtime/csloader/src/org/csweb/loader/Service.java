@@ -350,12 +350,16 @@ final class Service {
         return answerQueues.computeIfAbsent(dialog, k -> new LinkedBlockingQueue<>());
     }
 
-    private static Map<String, Object> nextAnswer(int dialog) throws InterruptedException {
+    /** The app's next answer for `dialog`, waiting at most `timeoutMs` (Main.NO_ANSWER_YET); null once stdin closed. */
+    private static Map<String, Object> nextAnswer(int dialog, long timeoutMs) throws InterruptedException {
         BlockingQueue<Map<String, Object>> q = queue(dialog);
+        long end = System.currentTimeMillis() + timeoutMs;
         while (true) {
-            Map<String, Object> a = q.poll(500, TimeUnit.MILLISECONDS);
+            long left = end - System.currentTimeMillis();
+            Map<String, Object> a = q.poll(Math.max(0, Math.min(left, 500)), TimeUnit.MILLISECONDS);
             if (a != null) return a;
             if (inputClosed) return null;
+            if (System.currentTimeMillis() >= end) return Main.NO_ANSWER_YET;
         }
     }
 
