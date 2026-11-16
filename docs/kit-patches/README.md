@@ -1,6 +1,6 @@
 # Kit patches
 
-The project builds on Native App Kit `862e307133e5b498eb4d7b15b7f30b56af545cb7` (upstream `main`,
+The project builds on Native App Kit `a4ca3b6583366b76f9d377d57d6b6f1553ddde41` (upstream `main`,
 2026-11-16) **without local changes**. `external/webos-native-app-kit` is a plain checkout of that commit,
 made or checked by `tools/fetch-kit.sh` (which holds the pinned commit; CI uses it too):
 
@@ -37,6 +37,9 @@ and upstream as a pull request.
 | Live DASH follows new segments by the clock between MPD updates and keeps every rendition of the bitrate ladder listed (stalls with dropped frames, and switches landing up to 30 s in the past, on the LG C1; test stream: `tools/abr-test/`, project PR #7) | https://github.com/Native-Webos/webos-native-app-kit/pull/9 | `937da4f` |
 | The controller reads the source on its own thread, so a waiting read no longer starves the decoder; it pauses the backend and the clock to buffer when a stream runs dry instead of letting Starfish drop every late frame; live DASH joins behind the edge of every rendition by its longest segments (stutter and dropped frames on live DASH, LG C1) | https://github.com/Native-Webos/webos-native-app-kit/pull/10 | `5b07b2d` |
 | The controller fails on a backend error instead of playing on over a black picture, names the call a stuck playback thread is in, and reports a seek's target as the position until it is on screen (issues #15 and #18; [0007](0007-backend-error-seek-target.md)) | https://github.com/Native-Webos/webos-native-app-kit/pull/12 | `7fe49ab` |
+
+Kit `a4ca3b6` (2026-11-16) masks URL path segments that are tokens in every log line, so media
+lines no longer keep signed CDN paths (`https://<cdn>/<redacted>/v.mp4`).
 
 Kit `862e307` (moved to 2026-11-16 for issue #25) makes directional focus prefer candidates in the
 source's beam only as Android's `FocusFinder.beamBeats` does: Up from a card no longer jumps past the
