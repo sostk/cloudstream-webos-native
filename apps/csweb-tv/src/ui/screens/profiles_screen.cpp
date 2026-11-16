@@ -3,6 +3,7 @@
 
 #include "profiles/profiles.hpp"
 #include "ui/theme/theme.hpp"
+#include "ui/widgets/glass_dialog.hpp"
 #include "ui/widgets/pill_button.hpp"
 #include "ui/widgets/pin_pad.hpp"
 #include "ui/widgets/profile_avatar.hpp"
@@ -18,7 +19,7 @@ constexpr const char *kCat = "csweb";
 
 void prompt_pin(Ui &ui, const std::string &title, const std::string &message,
                 std::function<void(Ui &, const std::string &)> done) {
-    auto d = std::make_unique<Dialog>(title, message);
+    auto d = std::make_unique<GlassDialog>(title, message);
     Dialog *dlg = d.get();
     auto &field = d->body().add<TextField>("4 digits");
     field.set_password(true).set_max_length(4);
@@ -38,7 +39,7 @@ void prompt_pin(Ui &ui, const std::string &title, const std::string &message,
 
 void ask_profile_name(Ui &ui, const std::string &title, const std::string &current,
                       std::function<void(Ui &, const std::string &)> done) {
-    auto d = std::make_unique<Dialog>(title);
+    auto d = std::make_unique<GlassDialog>(title);
     Dialog *dlg = d.get();
     auto &field = d->body().add<TextField>("Name");
     field.set_max_length(40);
@@ -57,7 +58,9 @@ void ask_profile_name(Ui &ui, const std::string &title, const std::string &curre
 }
 
 void choose_profile_colour(Ui &ui, app::Services &s, int key_index, std::function<void(Ui &)> changed) {
-    auto d = std::make_unique<Dialog>("Colour");
+    auto d = std::make_unique<GlassDialog>("Colour");
+    // Six avatars with their focus rings need more than the standard panel's content width.
+    d->set_panel_width(1060);
     Dialog *dlg = d.get();
     auto &row = d->body().add<wnk::ui::Row>(24);
     row.set_focus_scope();
@@ -243,7 +246,7 @@ void ProfilesScreen::close_pin(Ui &ui) {
 void ProfilesScreen::edit(Ui &ui, int key_index) {
     const profiles::Profile *p = s_.profiles.find(key_index);
     if (p == nullptr) return;
-    auto d = std::make_unique<Dialog>(p->name);
+    auto d = std::make_unique<GlassDialog>(p->name);
     Dialog *dlg = d.get();
     auto add = [&](const std::string &text, const std::string &icon, std::function<void(Ui &)> fn, const std::string &id) {
         d->body().add<PillButton>(text, icon, PillButton::Style::Glass, [dlg, fn](Ui &u) {

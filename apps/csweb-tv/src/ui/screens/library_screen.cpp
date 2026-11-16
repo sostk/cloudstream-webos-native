@@ -3,6 +3,7 @@
 
 #include "settings/settings_store.hpp"
 #include "ui/theme/theme.hpp"
+#include "ui/widgets/glass_dialog.hpp"
 #include "ui/widgets/pill_button.hpp"
 #include "ui/widgets/top_bar.hpp"
 
@@ -95,7 +96,7 @@ library::ListSorting LibraryScreen::sorting() const {
 }
 
 void LibraryScreen::choose_sorting(Ui &ui) {
-    auto d = std::make_unique<Dialog>("Sort");
+    auto d = std::make_unique<GlassDialog>("Sort");
     Dialog *dlg = d.get();
     View *current = nullptr;
     for (library::ListSorting m : library::local_sortings()) {

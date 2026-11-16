@@ -68,3 +68,19 @@ TEST("panel_over_artwork_shows_the_blurred_colour_under_it") {
     const auto scrim = glass::compose(100, 50, 25, s, &under, {0, 500, 100, 50});
     CHECK(at(scrim, 100, 50, 25)[0] < at(left, 100, 50, 25)[0]);  // the backdrop's scrim darkens it
 }
+
+TEST("a smaller texture covers the whole panel") {
+    // A dialog's glass is composed at a quarter of its size: pixels still map across the full panel.
+    glass::Under under;
+    under.image = std::make_shared<const glass::Blurred>(glass::blur(halves(640, 360)));
+    under.frame = {0, 0, 1920, 1080};
+    const glass::Style s = glass::dialog_style();
+    CHECK(s.resolution < 1);
+    // 1600 logical units wide from x=160: its left end is over red, its right end over blue.
+    const int w = 400, h = 100;
+    const auto px = glass::compose(w, h, 6, s, &under, {160, 400, 1600, 400});
+    CHECK(at(px, w, 20, 50)[0] > at(px, w, 20, 50)[2]);
+    CHECK(at(px, w, w - 20, 50)[2] > at(px, w, w - 20, 50)[0]);
+    CHECK_EQ(at(px, w, w / 2, 50)[3], 255);
+    CHECK_EQ(at(px, w, 0, 0)[3], 0);  // rounded corner
+}

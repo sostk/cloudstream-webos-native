@@ -4,7 +4,9 @@
 // (the main action); Glass is a translucent pill that turns white when focused; Ghost has no fill
 // until focused (navigation tabs). With no text it is a round icon button (give it an
 // accessible_label). Focus is shown by the fill, not the kit's ring. A frosted Glass pill (over
-// artwork: the top bar, hero buttons) shows the blurred artwork under it (glass.hpp).
+// artwork: the top bar, hero buttons) shows the blurred artwork under it (glass.hpp). A pill is never
+// wider than the room it is given: text that does not fit ends in an ellipsis, and a suffix (an
+// episode's "· 100 %") is kept whole after it.
 #pragma once
 
 #include "ui/widgets/glass.hpp"
@@ -22,6 +24,7 @@ class PillButton : public wnk::ui::Button {
     PillButton &set_selected(bool on);  // Ghost tabs: the section shown, marked when not focused
     PillButton &set_icon(std::string icon);
     PillButton &set_frosted(bool on);
+    PillButton &set_suffix(std::string suffix);  // drawn after the text, never cut
     bool selected() const { return selected_; }
 
  protected:
@@ -34,6 +37,7 @@ class PillButton : public wnk::ui::Button {
     float text_size() const;
     Style style_;
     std::string icon_;
+    std::string suffix_;
     float height_;
     bool selected_ = false;
     bool shown_dark_ = false;

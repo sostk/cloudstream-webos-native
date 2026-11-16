@@ -3,6 +3,7 @@
 
 #include "plugins/dialog_image.hpp"
 #include "ui/theme/theme.hpp"
+#include "ui/widgets/glass_dialog.hpp"
 #include "ui/widgets/pill_button.hpp"
 
 #include "wnk/log.hpp"
@@ -104,7 +105,7 @@ void PluginDialogHost::show(Ui &ui, const json &d) {
     if (current_ != nullptr) close_current(ui);  // a new dialog
     answered_ = false;
     WNK_LOGI("csweb", "plugin dialog %d (%s)", id, text_of(d, "stage").c_str());
-    auto dialog = std::make_unique<Dialog>(text_of(d, "title"), text_of(d, "message"));
+    auto dialog = std::make_unique<GlassDialog>(text_of(d, "title"), text_of(d, "message"));
     Dialog *dlg = dialog.get();
     dlg->back_dismisses = cancelable;
     fill(*dlg, d, id);

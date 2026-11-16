@@ -4,6 +4,7 @@
 #include "profiles/profiles.hpp"
 #include "ui/screens/profiles_screen.hpp"
 #include "ui/theme/theme.hpp"
+#include "ui/widgets/glass_dialog.hpp"
 #include "ui/widgets/icons.hpp"
 #include "ui/widgets/pill_button.hpp"
 #include "ui/widgets/profile_avatar.hpp"
@@ -201,7 +202,7 @@ void SetupScreen::build_finish() {
 void SetupScreen::edit_profile(Ui &ui, int key_index) {
     const profiles::Profile *p = s_.profiles.find(key_index);
     if (p == nullptr) return;
-    auto d = std::make_unique<Dialog>(p->name);
+    auto d = std::make_unique<GlassDialog>(p->name);
     Dialog *dlg = d.get();
     auto add = [&](const std::string &text, const std::string &icon, std::function<void(Ui &)> fn, const std::string &id) {
         d->body().add<PillButton>(text, icon, PillButton::Style::Glass, [dlg, fn](Ui &u) {

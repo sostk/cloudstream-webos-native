@@ -137,6 +137,14 @@ Style chip_style() {
     return s;
 }
 
+Style dialog_style() {
+    Style s = panel_style();
+    s.tint_alpha = 0.62f;  // text sits on it, and the artwork around is under the scrim
+    s.ground_alpha = 0.9f;
+    s.resolution = 0.25f;  // a 920 x 1000 panel is 230 x 250 pixels to compose
+    return s;
+}
+
 std::vector<uint8_t> compose(int w, int h, float radius, const Style &style, const Under *under, const wnk::Rect &at) {
     std::vector<uint8_t> out(static_cast<size_t>(w) * h * 4, 0);
     const theme::Color bg = theme::kBackground;
@@ -160,6 +168,8 @@ std::vector<uint8_t> compose(int w, int h, float radius, const Style &style, con
             rgb[c] = mixf(mixf(px(x0, y0, c), px(x1, y0, c), fx), mixf(px(x0, y1, c), px(x1, y1, c), fx), fy);
         }
     };
+    // Texture pixels to logical units (a smaller texture covers the same rectangle).
+    const float kx = at.w > 0 ? at.w / w : 1.0f, ky = at.h > 0 ? at.h / h : 1.0f;
     const float bgc[3] = {bg.r, bg.g, bg.b};
     const float tint[3] = {style.tint.r, style.tint.g, style.tint.b};
     const float r = std::min(radius, std::min(w, h) * 0.5f);
@@ -178,7 +188,7 @@ std::vector<uint8_t> compose(int w, int h, float radius, const Style &style, con
             float c[3];
             float alpha;
             if (img != nullptr) {
-                const float sx = at.x + cx, sy = at.y + cy;
+                const float sx = at.x + cx * kx, sy = at.y + cy * ky;
                 sample(sx, sy, c);
                 // The backdrop's own scrims, so the glass matches what is around it.
                 const wnk::Rect &f = under->frame;
@@ -217,10 +227,11 @@ Surface::~Surface() {
     if (renderer_ != nullptr && texture_ != wnk::render::kNoTexture) renderer_->destroy_texture(texture_);
 }
 
-void Surface::draw(wnk::ui::Ui &ui, const wnk::Rect &r, float radius, const Style &style) {
+void Surface::draw(wnk::ui::Ui &ui, const wnk::Rect &r, float radius, const Style &style, float opacity, wnk::Point shift) {
     auto &rr = ui.renderer();
     const wnk::Rect q{std::round(r.x), std::round(r.y), std::round(r.w), std::round(r.h)};
-    if (q.w < 2 || q.h < 2) return;
+    if (q.w < 2 || q.h < 2 || opacity <= 0) return;
+    const wnk::Rect at{q.x + std::round(shift.x), q.y + std::round(shift.y), q.w, q.h};  // where it is drawn
     const Under *under = nullptr;
     if (g_under_at == ui.now_ms() && g_under.image && g_under.image->width > 0) {
         const wnk::Rect &f = g_under.frame;
@@ -229,13 +240,19 @@ void Surface::draw(wnk::ui::Ui &ui, const wnk::Rect &r, float radius, const Styl
     if (style.shadow) {
         for (int i = 3; i >= 1; i--) {
             const float g = static_cast<float>(i) * 3;
-            rr.fill_rect({q.x - g, q.y - g + 6, q.w + g * 2, q.h + g * 2}, ui.fade(theme::Color::hex(0x00000000).with_alpha(0.07f)),
-                         radius + g);
+            rr.fill_rect({at.x - g, at.y - g + 6, at.w + g * 2, at.h + g * 2},
+                         ui.fade(theme::Color::hex(0x00000000).with_alpha(0.07f * opacity)), radius + g);
         }
     }
+    // A texture smaller than the panel (resolution < 1) has its border drawn sharp afterwards instead.
+    const float res = std::clamp(style.resolution, 0.05f, 1.0f);
+    const bool scaled = res < 1;
+    const int tw = std::max(2, static_cast<int>(std::lround(q.w * res)));
+    const int th = std::max(2, static_cast<int>(std::lround(q.h * res)));
     std::string key = std::to_string(under ? under->image->id : 0) + ":" + std::to_string(static_cast<int>(q.w)) + "x" +
                       std::to_string(static_cast<int>(q.h)) + ":" + std::to_string(static_cast<int>(radius)) + ":" +
-                      std::to_string(style.tint_alpha) + ":" + std::to_string(style.ground_alpha);
+                      std::to_string(style.tint_alpha) + ":" + std::to_string(style.ground_alpha) + ":" +
+                      std::to_string(res);
     if (under) {
         // The artwork under it changes with the position (and the backdrop's frame and scrims).
         const wnk::Rect &f = under->frame;
@@ -245,13 +262,19 @@ void Surface::draw(wnk::ui::Ui &ui, const wnk::Rect &r, float radius, const Styl
                std::to_string(under->left_strength) + std::to_string(under->left_extent) + std::to_string(under->bottom_extent);
     }
     if (key != key_ || texture_ == wnk::render::kNoTexture || renderer_ != &rr) {
-        const std::vector<uint8_t> px = compose(static_cast<int>(q.w), static_cast<int>(q.h), radius, style, under, q);
+        Style s = style;
+        if (scaled) s.border_top = s.border_bottom = 0;
+        const std::vector<uint8_t> px = compose(tw, th, radius * res, s, under, q);
         if (renderer_ != nullptr && texture_ != wnk::render::kNoTexture) renderer_->destroy_texture(texture_);
         renderer_ = &rr;
-        texture_ = rr.create_texture(static_cast<int>(q.w), static_cast<int>(q.h), px.data());
+        texture_ = rr.create_texture(tw, th, px.data());
         key_ = std::move(key);
     }
-    if (texture_ != wnk::render::kNoTexture) rr.draw_image(texture_, q, ui.fade(wnk::render::kWhite));
+    if (texture_ != wnk::render::kNoTexture) rr.draw_image(texture_, at, ui.fade(wnk::render::kWhite.with_alpha(opacity)));
+    if (scaled) {
+        const float a = (style.border_top + style.border_bottom) * 0.5f * opacity;
+        rr.stroke_rect(at, ui.fade(wnk::render::kWhite.with_alpha(a)), 1.5f, radius);
+    }
 }
 
 }  // namespace csweb::ui::glass
