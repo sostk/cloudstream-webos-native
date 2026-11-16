@@ -191,9 +191,9 @@ def instrument(source, output):
     service = service_stage(service, "        int n = 0;\n        for (MainAPI api : Main.providers()) {",
         '        Main.legacyLoadStage("providers.begin");\n        int n = 0;\n' +
         "        for (MainAPI api : Main.providers()) {")
-    service = service_stage(service, '        Main.emit(Main.event("loaded", "plugin", file.getPath(), "providers", n));',
+    service = service_stage(service, '        // settings: whether the plugin set openSettings',
         '        Main.legacyLoadStage("providers.end");\n' +
-        '        Main.emit(Main.event("loaded", "plugin", file.getPath(), "providers", n));')
+        '        // settings: whether the plugin set openSettings')
     service = service_stage(service, "            ok = handle(op, p);",
         '            if (op.equals("load")) Main.legacyLoadStage("request.begin");\n            ok = handle(op, p);\n' +
         '            if (op.equals("load")) Main.legacyLoadStage("request.end");')
