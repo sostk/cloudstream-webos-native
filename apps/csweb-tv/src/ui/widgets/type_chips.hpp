@@ -34,9 +34,9 @@ class TypeChips : public wnk::ui::Grid {
     // height used; with an `origin`, also lays the chips out from there.
     float flow(wnk::ui::Ui &ui, float width, const wnk::Point *origin);
     void refresh();
-    bool flow_ = false;
     Handler on_change_;
     std::set<std::string> selected_;
+    bool flow_ = false;
 };
 
 }  // namespace csweb::ui
