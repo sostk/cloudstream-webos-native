@@ -782,19 +782,19 @@ void PlayerScreen::open_episodes(Ui &ui) {
     auto d = std::make_unique<GlassDialog>("Episodes");
     Dialog *dlg = d.get();
     auto &scroll = d->body().add<ScrollView>();
-    scroll.set_height(Dim::fixed(600));
+    scroll.set_width(Dim::fixed(GlassDialog::kContentWidth)).set_height(Dim::fixed(600));
     auto &list = scroll.add<Column>(8);
     View *current = nullptr;
     for (size_t i = 0; i < target_.episodes.size(); i++) {
         const auto &e = target_.episodes[i];
         const auto p = s_.library->get().view_pos(target_.provider, e.data);
-        std::string text = e.name;
         const int pct = p && p->duration_ms > 0 ? static_cast<int>(library::visual_progress(*p) * 100) : 0;
-        if (pct > 0) text += "  ·  " + std::to_string(pct) + " %";
-        auto &b = list.add<PillButton>(text, i == target_.index ? "play" : "", PillButton::Style::Glass, [this, dlg, i](Ui &u) {
+        // A long title ends in an ellipsis inside the panel; the progress after it stays whole.
+        auto &b = list.add<PillButton>(e.name, i == target_.index ? "play" : "", PillButton::Style::Glass, [this, dlg, i](Ui &u) {
             dlg->dismiss(u);
             if (i != target_.index) play_episode(u, i);
         }, 60);
+        if (pct > 0) b.set_suffix("  ·  " + std::to_string(pct) + " %");
         b.name = "episodes." + std::to_string(i);
         if (i == target_.index) current = &b;
     }

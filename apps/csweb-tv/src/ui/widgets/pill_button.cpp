@@ -28,6 +28,12 @@ PillButton &PillButton::set_frosted(bool on) {
     return *this;
 }
 
+PillButton &PillButton::set_suffix(std::string suffix) {
+    suffix_ = std::move(suffix);
+    invalidate();
+    return *this;
+}
+
 PillButton &PillButton::set_icon(std::string icon) {
     if (icon == icon_ && (icon_.empty() || icon_light_)) return *this;  // callers may set it every frame
     icon_ = std::move(icon);
@@ -48,13 +54,17 @@ PillButton &PillButton::set_icon(std::string icon) {
 
 float PillButton::text_size() const { return height_ >= 64 ? theme::kLabel + 2 : theme::kCaption; }
 
-wnk::Size PillButton::measure_content(Ui &ui, wnk::Size) {
+wnk::Size PillButton::measure_content(Ui &ui, wnk::Size available) {
     const float icon = icon_.empty() ? 0 : height_ * 0.42f;
     if (text().empty()) return {height_, height_};
     const wnk::render::TextStyle s{ui.theme().bold, text_size(), theme::kText};
     const float pad = height_ * 0.47f;
     const float gap = icon > 0 ? 12 : 0;
-    return {pad * 2 + icon + gap + ui.renderer().measure_text(s, text()), height_};
+    const float natural = pad * 2 + icon + gap + ui.renderer().measure_text(s, text() + suffix_);
+    // No wider than the room given (a dialog's content width); draw() ends the text in an ellipsis.
+    // A width under two heights is a measuring pass without room, not a limit.
+    const bool limited = available.w >= height_ * 2 && natural > available.w;
+    return {limited ? available.w : natural, height_};
 }
 
 void PillButton::layout_content(Ui &ui, const wnk::Rect &content) {
@@ -106,7 +116,18 @@ void PillButton::draw(Ui &ui) {
                                    ui.fade(!enabled() ? theme::kTextMuted : dark ? theme::kOnFocus : theme::kText)};
     const float icon = icon_.empty() ? 0 : height_ * 0.42f + 12;
     const float lh = r.line_height(s);
-    r.draw_text(s, {f.x + height_ * 0.47f + icon, f.y + (f.h - lh) * 0.5f + r.ascent(s)}, text());
+    const float pad = height_ * 0.47f;
+    const float suffix_w = suffix_.empty() ? 0 : r.measure_text(s, suffix_);
+    const float room = f.w - pad * 2 - icon - suffix_w;
+    std::string shown = text();
+    if (r.measure_text(s, shown) > room + 0.5f) {  // text that fits exactly is not cut by rounding
+        const auto lines = Label::wrap(r, s, shown, std::max(room, 0.0f), 1);
+        shown = lines.empty() ? std::string() : lines.front();
+    }
+    const float baseline = f.y + (f.h - lh) * 0.5f + r.ascent(s);
+    const float x = f.x + pad + icon;
+    const float advance = r.draw_text(s, {x, baseline}, shown);
+    if (!suffix_.empty()) r.draw_text(s, {x + advance, baseline}, suffix_);
 }
 
 }  // namespace csweb::ui

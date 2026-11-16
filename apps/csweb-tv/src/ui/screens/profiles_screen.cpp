@@ -59,6 +59,8 @@ void ask_profile_name(Ui &ui, const std::string &title, const std::string &curre
 
 void choose_profile_colour(Ui &ui, app::Services &s, int key_index, std::function<void(Ui &)> changed) {
     auto d = std::make_unique<GlassDialog>("Colour");
+    // Six avatars with their focus rings need more than the standard panel's content width.
+    d->set_panel_width(1060);
     Dialog *dlg = d.get();
     auto &row = d->body().add<wnk::ui::Row>(24);
     row.set_focus_scope();

@@ -228,6 +228,12 @@ if (WNK_BUILD_TESTS)
     target_include_directories(csweb_test_glass PRIVATE "${PROJECT_SOURCE_DIR}/tests/unit" "${CMAKE_CURRENT_SOURCE_DIR}/src")
     target_link_libraries(csweb_test_glass PRIVATE wnk_app)
     add_test(NAME csweb.glass COMMAND csweb_test_glass)
+
+    add_executable(csweb_test_pill_button tests/test_pill_button.cpp src/ui/widgets/pill_button.cpp src/ui/widgets/glass.cpp
+                   src/ui/widgets/icons.cpp src/ui/theme/theme.cpp)
+    target_include_directories(csweb_test_pill_button PRIVATE "${PROJECT_SOURCE_DIR}/tests/unit" "${CMAKE_CURRENT_SOURCE_DIR}/src")
+    target_link_libraries(csweb_test_pill_button PRIVATE wnk_app)
+    add_test(NAME csweb.pill_button COMMAND csweb_test_pill_button)
     foreach (t link_priority merged_source subtitle_file)
         add_executable(csweb_test_${t} tests/test_${t}.cpp)
         target_include_directories(csweb_test_${t} PRIVATE "${PROJECT_SOURCE_DIR}/tests/unit")
