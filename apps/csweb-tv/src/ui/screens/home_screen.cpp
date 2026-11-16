@@ -6,6 +6,7 @@
 #include "ui/dialogs/clear_watch_history.hpp"
 #include "ui/theme/theme.hpp"
 #include "ui/widgets/art.hpp"
+#include "ui/widgets/glass_dialog.hpp"
 #include "ui/widgets/pill_button.hpp"
 #include "ui/widgets/top_bar.hpp"
 #include "ui/widgets/type_chips.hpp"
@@ -391,18 +392,19 @@ void HomeScreen::show_hero(const runtime::Details &d) {
 }
 
 void HomeScreen::open_provider_picker(Ui &ui) {
-    auto dialog = std::make_unique<Dialog>("Choose a source", "The home page shows one source at a time.");
+    auto dialog = std::make_unique<GlassDialog>("Choose a source", "The home page shows one source at a time.");
     Dialog *dlg = dialog.get();
     // HomeFragment.selectHomepage: the providers left by the language and media settings, the type
     // chips (home_pref_homepage) narrowing the list.
     const auto valid = settings::preferred_providers(s_.plugins->providers(), settings::read_filters(*s_.settings), true);
     auto *list = static_cast<Column *>(nullptr);
     auto fill = std::make_shared<std::function<void(const std::set<std::string> &)>>();
-    auto &chips = dlg->body().add<TypeChips>(5, [this, fill](Ui &, const std::set<std::string> &types) {
+    // Three chips a row: six chips (Livestreams the widest) fit the panel in two even rows.
+    auto &chips = dlg->body().add<TypeChips>(3, [this, fill](Ui &, const std::set<std::string> &types) {
         settings::put_set(*s_.settings, settings::kHomeTypes, types);
         (*fill)(types);
     });
-    chips.set_width(Dim::fixed(1100));
+    chips.set_width(Dim::fixed(GlassDialog::kContentWidth));
     auto &scroll = dlg->body().add<ScrollView>();
     scroll.set_height(Dim::fixed(460));
     list = &scroll.add<Column>(8);

@@ -6,6 +6,7 @@
 #include "ui/theme/theme.hpp"
 #include "ui/widgets/art.hpp"
 #include "ui/widgets/episode_row.hpp"
+#include "ui/widgets/glass_dialog.hpp"
 #include "ui/widgets/pill_button.hpp"
 
 #include "wnk/ui/forms.hpp"
@@ -385,7 +386,7 @@ void DetailsScreen::play_resume(Ui &ui) {
 
 void DetailsScreen::choose_list(Ui &ui) {
     // CloudStream's bookmark menu: every WatchType, the current one marked, None removes it.
-    auto d = std::make_unique<Dialog>("Library");
+    auto d = std::make_unique<GlassDialog>("Library");
     Dialog *dlg = d.get();
     const library::Show sh = show_info();
     const library::WatchType cur = s_.library->get().watch_type(sh.provider, sh.url);

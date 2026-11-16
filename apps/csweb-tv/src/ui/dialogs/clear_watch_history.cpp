@@ -2,6 +2,7 @@
 #include "ui/dialogs/clear_watch_history.hpp"
 
 #include "library/library_store.hpp"
+#include "ui/widgets/glass_dialog.hpp"
 
 #include "wnk/log.hpp"
 #include "wnk/ui/navigation.hpp"
@@ -14,7 +15,7 @@ using namespace wnk::ui;
 
 void confirm_clear_watch_history(Ui &ui, app::Services &s, std::function<void(Ui &)> cleared) {
     // R.string.clear_history / delete_message("Continue Watching") / cancel / delete.
-    auto d = std::make_unique<Dialog>("Clear history", "This will permanently delete Continue Watching\nAre you sure?");
+    auto d = std::make_unique<GlassDialog>("Clear history", "This will permanently delete Continue Watching\nAre you sure?");
     d->add_button("Cancel");
     app::Services *services = &s;
     d->add_button("Delete", [services, cleared](Ui &u) {

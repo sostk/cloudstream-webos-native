@@ -9,6 +9,7 @@
 #include "ui/screens/setup_screen.hpp"
 #include "ui/screens/splash_screen.hpp"
 #include "ui/widgets/glass.hpp"
+#include "ui/widgets/glass_dialog.hpp"
 #include "ui/widgets/icons.hpp"
 
 #include "wnk/log.hpp"
@@ -221,7 +222,7 @@ void Application::add_repository_from_link(wnk::ui::Ui &ui, const std::string &u
         if (!repo || !nav_) return;
         WNK_LOGI(kCat, "link: repository added");
         const plugins::RepositoryData data = *repo;
-        auto d = std::make_unique<wnk::ui::Dialog>("Repository added", data.name.empty() ? data.url : data.name);
+        auto d = std::make_unique<ui::GlassDialog>("Repository added", data.name.empty() ? data.url : data.name);
         d->add_button("Close");
         d->add_button("Open repository", [this, data](wnk::ui::Ui &u) {
             router_->open_extensions(u);

@@ -8,6 +8,7 @@
 #include "player/media_factory.hpp"
 #include "settings/preferences.hpp"
 #include "ui/theme/theme.hpp"
+#include "ui/widgets/glass_dialog.hpp"
 #include "ui/widgets/pill_button.hpp"
 #include "ui/widgets/seek_bar.hpp"
 
@@ -555,7 +556,7 @@ void PlayerScreen::update(Ui &ui, float dt) {
 }
 
 void PlayerScreen::open_sources(Ui &ui) {
-    auto d = std::make_unique<Dialog>("Sources", loading_ ? "Still loading links…" : std::string());
+    auto d = std::make_unique<GlassDialog>("Sources", loading_ ? "Still loading links…" : std::string());
     Dialog *dlg = d.get();
     auto &scroll = d->body().add<ScrollView>();
     scroll.set_height(Dim::fixed(560));
@@ -583,7 +584,7 @@ void PlayerScreen::open_sources(Ui &ui) {
 }
 
 void PlayerScreen::open_subtitles(Ui &ui) {
-    auto d = std::make_unique<Dialog>("Subtitles");
+    auto d = std::make_unique<GlassDialog>("Subtitles");
     Dialog *dlg = d.get();
     auto &scroll = d->body().add<ScrollView>();
     scroll.set_height(Dim::fixed(560));
@@ -686,7 +687,7 @@ void PlayerScreen::auto_select_subtitles() {
 
 void PlayerScreen::open_subtitle_delay(Ui &ui) {
     // CloudStream's subtitle offset: positive shows each line later, negative earlier.
-    auto d = std::make_unique<Dialog>("Subtitle sync", "Left and Right move the subtitles by a tenth of a second: positive shows them later, negative earlier.");
+    auto d = std::make_unique<GlassDialog>("Subtitle sync", "Left and Right move the subtitles by a tenth of a second: positive shows them later, negative earlier.");
     auto &slider = d->body().add<Slider>("Delay", -10.0f, 10.0f, 0.1f, static_cast<float>(sub_delay_us_) / 1e6f,
                                          [this](Ui &, float v) { sub_delay_us_ = std::llround(v * 10.0f) * 100000; });
     slider.set_format([](float v) {
@@ -694,7 +695,7 @@ void PlayerScreen::open_subtitle_delay(Ui &ui) {
         std::snprintf(buf, sizeof buf, "%+.1f s", v);
         return std::string(buf);
     });
-    slider.set_width(Dim::fixed(900));
+    slider.set_width(Dim::fixed(GlassDialog::kContentWidth));
     slider.name = "subs.delay";
     Slider *sp = &slider;
     d->add_button("Reset", [this](Ui &) { sub_delay_us_ = 0; });
@@ -711,7 +712,7 @@ int64_t PlayerScreen::seek_us(bool controls_hidden) const {
 void PlayerScreen::open_audio(Ui &ui) {
     if (!controller_) return;
     const PlaybackSnapshot snap = controller_->snapshot();
-    auto d = std::make_unique<Dialog>("Audio");
+    auto d = std::make_unique<GlassDialog>("Audio");
     Dialog *dlg = d.get();
     size_t count = 0;
     for (const TrackInfo &t : tracks_) {
@@ -778,7 +779,7 @@ void PlayerScreen::play_episode(Ui &ui, size_t index) {
 }
 
 void PlayerScreen::open_episodes(Ui &ui) {
-    auto d = std::make_unique<Dialog>("Episodes");
+    auto d = std::make_unique<GlassDialog>("Episodes");
     Dialog *dlg = d.get();
     auto &scroll = d->body().add<ScrollView>();
     scroll.set_height(Dim::fixed(600));

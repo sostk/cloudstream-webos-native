@@ -139,6 +139,7 @@ add_executable(csweb-tv
         src/ui/widgets/art.cpp
         src/ui/widgets/episode_row.cpp
         src/ui/widgets/glass.cpp
+        src/ui/widgets/glass_dialog.cpp
         src/ui/widgets/icons.cpp
         src/ui/widgets/nav_bar.cpp
         src/ui/widgets/pill_button.cpp

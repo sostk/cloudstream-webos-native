@@ -68,9 +68,13 @@ struct Style {
     float border_top = 0.30f, border_bottom = 0.07f;  // white border alpha, top to bottom
     float highlight = 0.07f;      // white at the top edge, fading out by the middle
     bool shadow = true;
+    // Texture pixels per logical unit. Below 1 (large panels: dialogs) the texture is composed smaller
+    // and scaled up, which the blur hides, and the border is drawn sharp over it instead.
+    float resolution = 1;
 };
-Style panel_style();  // nav bar, pills over artwork
-Style chip_style();   // small pills: lighter shadow
+Style panel_style();   // nav bar, pills over artwork
+Style chip_style();    // small pills: lighter shadow
+Style dialog_style();  // dialog panels: denser tint for text, a quarter-resolution texture
 
 // One glass panel's texture. Owned by the widget that draws it.
 class Surface {
@@ -79,8 +83,10 @@ class Surface {
     ~Surface();
     Surface(const Surface &) = delete;
     Surface &operator=(const Surface &) = delete;
-    // Draws the panel at `r` (logical units) with corner `radius`.
-    void draw(wnk::ui::Ui &ui, const wnk::Rect &r, float radius, const Style &style);
+    // Draws the panel at `r` (logical units) with corner `radius`, at `opacity` and moved by `shift`.
+    // The artwork under it is that under `r`: a panel sliding in (shift) is not composed again.
+    void draw(wnk::ui::Ui &ui, const wnk::Rect &r, float radius, const Style &style, float opacity = 1,
+              wnk::Point shift = {});
 
  private:
     wnk::render::Renderer *renderer_ = nullptr;
@@ -88,7 +94,8 @@ class Surface {
     std::string key_;
 };
 
-// Composes a panel's pixels (exposed for tests): w x h straight-alpha RGBA.
+// Composes a panel's pixels (exposed for tests): w x h straight-alpha RGBA covering the logical
+// rectangle `at` (w x h pixels may be fewer than at.w x at.h; `radius` is in pixels).
 std::vector<uint8_t> compose(int w, int h, float radius, const Style &style, const Under *under, const wnk::Rect &at);
 
 }  // namespace csweb::ui::glass

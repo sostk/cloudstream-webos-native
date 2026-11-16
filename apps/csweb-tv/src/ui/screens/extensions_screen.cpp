@@ -4,6 +4,7 @@
 #include "core/guard.hpp"
 #include "plugins/settings_support.hpp"
 #include "ui/theme/theme.hpp"
+#include "ui/widgets/glass_dialog.hpp"
 #include "ui/widgets/pill_button.hpp"
 
 #include "wnk/log.hpp"
@@ -124,7 +125,7 @@ void ExtensionsScreen::rebuild() {
 }
 
 void ExtensionsScreen::open_add(Ui &ui) {
-    auto d = std::make_unique<Dialog>("Add repository", "A repository URL, a cloudstreamrepo:// link or a shortcode.");
+    auto d = std::make_unique<GlassDialog>("Add repository", "A repository URL, a cloudstreamrepo:// link or a shortcode.");
     Dialog *dlg = d.get();
     auto &field = d->body().add<TextField>("https://… or shortcode");
     field.set_width(Dim::fixed(800));
@@ -150,7 +151,7 @@ void ExtensionsScreen::open_add(Ui &ui) {
 }
 
 void ExtensionsScreen::confirm_remove(Ui &ui, const plugins::RepositoryData &repo) {
-    auto d = std::make_unique<Dialog>("Remove " + (repo.name.empty() ? repo.url : repo.name) + "?",
+    auto d = std::make_unique<GlassDialog>("Remove " + (repo.name.empty() ? repo.url : repo.name) + "?",
                                       "Its installed plugins are removed too.");
     d->add_button("Cancel");
     d->add_button("Remove", [this, repo](Ui &) {

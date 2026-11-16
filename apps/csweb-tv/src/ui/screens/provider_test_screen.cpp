@@ -2,6 +2,7 @@
 #include "ui/screens/provider_test_screen.hpp"
 
 #include "ui/theme/theme.hpp"
+#include "ui/widgets/glass_dialog.hpp"
 #include "ui/widgets/pill_button.hpp"
 
 #include "wnk/log.hpp"
@@ -116,9 +117,9 @@ void ProviderTestScreen::show_log(Ui &ui, size_t index) {
     const auto &t = *tests_[index];
     std::string text;
     for (const auto &l : t.log()) text += std::string(1, l.level) + "  " + l.text + "\n";
-    auto d = std::make_unique<Dialog>(t.provider().name + " · " + runtime::test_state_name(t.state()));
+    auto d = std::make_unique<GlassDialog>(t.provider().name + " · " + runtime::test_state_name(t.state()));
     auto &view = d->body().add<TextView>(text.empty() ? "Not started." : text, TextRole::Small);
-    view.set_width(Dim::fixed(1100)).set_height(Dim::fixed(520));
+    view.set_width(Dim::fixed(GlassDialog::kContentWidth)).set_height(Dim::fixed(520));
     view.name = "tests.log";
     d->add_button("Close");
     ui.show_dialog(std::move(d));
