@@ -17,8 +17,12 @@ class GlassDialog : public wnk::ui::Dialog {
  public:
     explicit GlassDialog(std::string title, std::string message = {});
 
-    // The width left for body content (the panel's width less its padding): wider content overflows.
-    static constexpr float kContentWidth = 920 - 2 * 56;
+    // The kit's panel: 920 wide with 56 padding each side. kContentWidth is what body content may use
+    // (wider overflows the panel); set_panel_width widens a panel for content that needs more room.
+    static constexpr float kPanelWidth = 920, kPadding = 56;
+    static constexpr float kContentWidth = kPanelWidth - 2 * kPadding;
+    static constexpr float content_width(float panel_width) { return panel_width - 2 * kPadding; }
+    void set_panel_width(float width);
 
  protected:
     void draw(wnk::ui::Ui &ui) override;

@@ -4,12 +4,47 @@
 #include "settings/preferences.hpp"
 #include "ui/widgets/pill_button.hpp"
 
+#include <algorithm>
+
 namespace csweb::ui {
 
 using namespace wnk::ui;
 
-TypeChips::TypeChips(int columns, Handler on_change) : Grid(columns, 10), on_change_(std::move(on_change)) {
+namespace {
+constexpr float kGap = 10;
+}
+
+TypeChips::TypeChips(int columns, Handler on_change)
+    : Grid(columns, kGap), on_change_(std::move(on_change)), flow_(columns == 0) {
     set_focus_scope();
+}
+
+float TypeChips::flow(Ui &ui, float width, const wnk::Point *origin) {
+    float x = 0, y = 0, line_h = 0;
+    for (const auto &c : children()) {
+        if (!c->visible()) continue;
+        const wnk::Size s = c->measure(ui, {width, 1e6f});
+        if (x > 0 && x + s.w > width) {  // wrap
+            x = 0;
+            y += line_h + kGap;
+            line_h = 0;
+        }
+        if (origin != nullptr) c->layout(ui, place(ui, *c, {origin->x + x, origin->y + y, s.w, s.h}));
+        x += s.w + kGap;
+        line_h = std::max(line_h, s.h);
+    }
+    return y + line_h;
+}
+
+wnk::Size TypeChips::measure_content(Ui &ui, wnk::Size available) {
+    if (!flow_) return Grid::measure_content(ui, available);
+    return {available.w, flow(ui, available.w, nullptr)};
+}
+
+void TypeChips::layout_content(Ui &ui, const wnk::Rect &content) {
+    if (!flow_) return Grid::layout_content(ui, content);
+    const wnk::Point origin{content.x, content.y};
+    flow(ui, content.w, &origin);
 }
 
 void TypeChips::set(const std::vector<runtime::Provider> &providers, const std::set<std::string> &selected) {

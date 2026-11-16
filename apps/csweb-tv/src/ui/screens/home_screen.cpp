@@ -392,22 +392,34 @@ void HomeScreen::show_hero(const runtime::Details &d) {
 }
 
 void HomeScreen::open_provider_picker(Ui &ui) {
+    // HomeFragment.selectHomepage (home_select_mainpage): type chips that narrow the list, then a single
+    // choice of None, Random and the providers left by the language and media settings, the current one
+    // checked. On a TV the two parts are labelled and look different: the chips are one row of small
+    // toggles, the sources a grid of wide tiles; focus starts on the current source.
+    static constexpr float kPanel = 1240, kGap = 12, kTileHeight = 60;
+    static constexpr int kColumns = 3;
+    static constexpr float kContent = GlassDialog::content_width(kPanel);
+    static constexpr float kTileWidth = (kContent - kGap * (kColumns - 1)) / kColumns;
     auto dialog = std::make_unique<GlassDialog>("Choose a source", "The home page shows one source at a time.");
-    Dialog *dlg = dialog.get();
-    // HomeFragment.selectHomepage: the providers left by the language and media settings, the type
-    // chips (home_pref_homepage) narrowing the list.
+    GlassDialog *dlg = dialog.get();
+    dlg->set_panel_width(kPanel);
     const auto valid = settings::preferred_providers(s_.plugins->providers(), settings::read_filters(*s_.settings), true);
-    auto *list = static_cast<Column *>(nullptr);
     auto fill = std::make_shared<std::function<void(const std::set<std::string> &)>>();
-    // Three chips a row: six chips (Livestreams the widest) fit the panel in two even rows.
-    auto &chips = dlg->body().add<TypeChips>(3, [this, fill](Ui &, const std::set<std::string> &types) {
+
+    dlg->body().add<Label>("Types", TextRole::Small).set_color(theme::kTextSecondary);
+    // A wrapping row of chips at their own widths (up to ten, CloudStream's tvtypes_chips).
+    auto &chips = dlg->body().add<TypeChips>(0, [this, fill](Ui &, const std::set<std::string> &types) {
         settings::put_set(*s_.settings, settings::kHomeTypes, types);
         (*fill)(types);
     });
-    chips.set_width(Dim::fixed(GlassDialog::kContentWidth));
+    chips.set_width(Dim::fixed(kContent));
+
+    auto &heading = dlg->body().add<Label>("Sources", TextRole::Small);
+    heading.set_color(theme::kTextSecondary);
+    heading.set_padding({0, 14, 0, 0});  // apart from the chips: a new part of the dialog
     auto &scroll = dlg->body().add<ScrollView>();
-    scroll.set_height(Dim::fixed(460));
-    list = &scroll.add<Column>(8);
+    scroll.set_width(Dim::fixed(kContent)).set_height(Dim::fixed(400));
+    auto *grid = &scroll.add<Grid>(kColumns, kGap);
     // As HomeViewModel.loadAndCancel(fromUI = true): None and a provider are stored as chosen; Random
     // picks one now and stores that provider.
     auto choose = [this, dlg](const std::string &value) {
@@ -418,21 +430,30 @@ void HomeScreen::open_provider_picker(Ui &ui) {
             load(ui, chosen_provider());
         };
     };
-    *fill = [this, list, valid, choose](const std::set<std::string> &types) {
-        list->clear_children();
-        list->add<PillButton>("None", "", PillButton::Style::Glass, choose(kNoneProvider), 60);
-        list->add<PillButton>("Random", "refresh", PillButton::Style::Glass, choose(kRandomProvider), 60);
-        // None and Random, then the providers by lower-case name (pinned providers are not built).
-        for (const auto &p : settings::home_providers(valid, types)) {
-            auto &b = list->add<PillButton>(p.name, p.name == provider_ ? "check" : "", PillButton::Style::Glass, choose(p.name), 60);
-            b.name = "provider." + p.name;
-        }
+    auto current = std::make_shared<View *>(nullptr);
+    *fill = [this, grid, &heading, valid, choose, current](const std::set<std::string> &types) {
+        grid->clear_children();
+        *current = nullptr;
+        auto tile = [&](const std::string &text, const std::string &icon, const std::string &value, bool chosen) {
+            auto &b = grid->add<PillButton>(text, chosen ? "check" : icon, PillButton::Style::Glass, choose(value), kTileHeight);
+            b.set_width(Dim::fixed(kTileWidth));
+            if (chosen) *current = &b;
+            return &b;
+        };
+        tile("None", "", kNoneProvider, provider_.empty());
+        tile("Random", "refresh", kRandomProvider, false);
+        // Then the providers by lower-case name (pinned providers are not built).
+        const auto providers = settings::home_providers(valid, types);
+        for (const auto &p : providers) tile(p.name, "", p.name, p.name == provider_)->name = "provider." + p.name;
+        heading.set_text(providers.empty() ? "Sources · none for these types"
+                                           : "Sources · " + std::to_string(providers.size()));
     };
     const auto types = settings::get_set(*s_.settings, settings::kHomeTypes, settings::default_chip_types());
     chips.set(valid, types);
     (*fill)(types);
     dlg->add_button("Close");
     ui.show_dialog(std::move(dialog));
+    if (*current != nullptr) ui.focus(*current);
 }
 
 }  // namespace csweb::ui
