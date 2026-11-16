@@ -207,7 +207,19 @@ void RepositoryScreen::rebuild() {
     status_->set_text(!error_.empty() ? error_
                                       : std::to_string(plugins_.size()) + " plugins · " + std::to_string(installed_count) +
                                             " installed");
+    // Installed plugins first, then the rest, each part under a heading and by name: a repository can
+    // list dozens of plugins and the few in use should not have to be found among them.
+    std::vector<const plugins::SitePlugin *> installed, available;
     for (const auto &sp : plugins_) {
+        (s_.plugins->installed_plugin(repo_.url, sp.internal_name) ? installed : available).push_back(&sp);
+    }
+    auto heading = [this](const std::string &text) {
+        list_->add<Label>(text).set_bold(true).set_color(theme::kAccent).set_padding({0, 16, 0, 0});
+    };
+    for (size_t k = 0; k < installed.size() + available.size(); k++) {
+        if (k == 0 && !installed.empty()) heading("Installed · " + std::to_string(installed.size()));
+        if (k == installed.size() && !available.empty()) heading("Available · " + std::to_string(available.size()));
+        const plugins::SitePlugin &sp = k < installed.size() ? *installed[k] : *available[k - installed.size()];
         const plugins::InstalledPlugin *ip = s_.plugins->installed_plugin(repo_.url, sp.internal_name);
         std::string detail = "v" + std::to_string(sp.version);
         if (!sp.language.empty()) detail += "  ·  " + sp.language;
@@ -252,14 +264,17 @@ void RepositoryScreen::rebuild() {
                 rebuild();
             }, 60).name = "plugin.update." + sp.internal_name;
         }
-        const plugins::InstalledPlugin installed = *ip;
-        auto &settings = row.buttons->add<PillButton>("", "settings", PillButton::Style::Glass,
-                                                      [this, installed](Ui &ui) { open_settings(ui, installed); }, 60);
-        settings.accessible_label = "Plugin settings";
-        settings.name = "plugin.settings." + sp.internal_name;
-        auto &remove = row.buttons->add<PillButton>("", "trash", PillButton::Style::Glass, [this, installed, finish](Ui &) {
-            busy_ = installed.internal_name;
-            s_.plugins->uninstall(installed.id, finish("Removed"));
+        const plugins::InstalledPlugin mine = *ip;
+        // As CloudStream: a settings button only for a plugin that has settings (set openSettings).
+        if (s_.plugins->has_settings(mine.id)) {
+            auto &settings = row.buttons->add<PillButton>("", "settings", PillButton::Style::Glass,
+                                                          [this, mine](Ui &ui) { open_settings(ui, mine); }, 60);
+            settings.accessible_label = "Plugin settings";
+            settings.name = "plugin.settings." + sp.internal_name;
+        }
+        auto &remove = row.buttons->add<PillButton>("", "trash", PillButton::Style::Glass, [this, mine, finish](Ui &) {
+            busy_ = mine.internal_name;
+            s_.plugins->uninstall(mine.id, finish("Removed"));
             rebuild();
         }, 60);
         remove.accessible_label = "Remove plugin";

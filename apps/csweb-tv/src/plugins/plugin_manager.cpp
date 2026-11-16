@@ -194,7 +194,7 @@ void PluginManager::send_load(const InstalledPlugin &p, const std::string &path,
     const auto started = std::chrono::steady_clock::now();
     deps_.runtime->request(
         req,
-        [this, learned, stages](const nlohmann::json &e) {
+        [this, learned, stages, id = p.id](const nlohmann::json &e) {
             const std::string ev = e.value("event", "");
             if (ev == "timing") {
                 for (const auto &[stage, v] : e.items()) {
@@ -205,6 +205,8 @@ void PluginManager::send_load(const InstalledPlugin &p, const std::string &path,
             if (ev == "provider") {
                 providers_.push_back(runtime::parse_provider(e));
                 learned->providers.push_back(providers_.back().name);
+            } else if (ev == "loaded" && e.contains("settings") && e["settings"].is_boolean()) {
+                settings_[id] = e["settings"].get<bool>();
             } else if (ev == "compat" && e.value("context", "") == "headless-activity") {
                 const std::string type = e.value("type", "");
                 if (valid_activity_name(type)) learned->activity = type;
@@ -233,6 +235,11 @@ void PluginManager::send_load(const InstalledPlugin &p, const std::string &path,
         });
 }
 
+bool PluginManager::has_settings(const std::string &id) const {
+    const auto it = settings_.find(id);
+    return it == settings_.end() || it->second;
+}
+
 bool PluginManager::loading() const {
     if (!started_ || pending_loads_ > 0) return true;
     if (runtime_ready_) return false;
@@ -257,6 +264,7 @@ void PluginManager::unload_plugin(const std::string &id, std::function<void()> t
                                         [&](const runtime::Provider &p) { return file_id(p.plugin) == id; }),
                          providers_.end());
         load_errors_.erase(id);
+        settings_.erase(id);
         if (then) then();
     };
     const bool loaded = std::any_of(providers_.begin(), providers_.end(),

@@ -276,7 +276,10 @@ final class Service {
                 n++;
             }
         }
-        Main.emit(Main.event("loaded", "plugin", file.getPath(), "providers", n));  // 0: settings-only plugins
+        // settings: whether the plugin set openSettings (CloudStream shows its settings button only then).
+        boolean settings = plugin instanceof com.lagradost.cloudstream3.plugins.Plugin
+                && ((com.lagradost.cloudstream3.plugins.Plugin) plugin).getOpenSettings() != null;
+        Main.emit(Main.event("loaded", "plugin", file.getPath(), "providers", n, "settings", settings));  // 0: settings-only plugins
         return true;
     }
 

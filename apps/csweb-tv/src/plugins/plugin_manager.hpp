@@ -59,6 +59,9 @@ class PluginManager {
     const runtime::Provider *provider(const std::string &name) const;
     // Plugin load results: id -> error (empty when loaded).
     const std::map<std::string, std::string> &load_errors() const { return load_errors_; }
+    // Whether a loaded plugin has settings (it set openSettings), as CloudStream decides whether to show
+    // its settings button. Unknown (not loaded yet, or a runtime that does not say): true.
+    bool has_settings(const std::string &id) const;
     // True until every enabled plugin has been loaded or has failed (also while the runtime starts).
     bool loading() const;
     // The stored repositories and plugins have been read (start() is asynchronous).
@@ -100,6 +103,7 @@ class PluginManager {
     std::vector<RepositoryData> repos_;
     std::vector<InstalledPlugin> installed_;
     std::vector<runtime::Provider> providers_;
+    std::map<std::string, bool> settings_;  // plugin id -> has settings, from the runtime's "loaded" event
     std::map<std::string, std::string> load_errors_;
     int pending_loads_ = 0;
     LoadHints hints_;
