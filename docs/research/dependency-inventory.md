@@ -10,6 +10,8 @@ GPL-3.0-or-later. Bundled/compiled-in components per kit `LICENSING.md` / `THIRD
 (audited by the kit 2026-10-12): SDL-webOS 2.30.12 (zlib), stb (MIT/PD), nlohmann/json (MIT), curl
 headers (curl), nanosvg (zlib), qrcodegen (MIT), libwebp (BSD-3), Atkinson Hyperlegible (OFL-1.1),
 FFmpeg (LGPL-2.1+, player only). LG libraries and libcurl are used from the TV, never shipped.
+The app adds Noto Emoji (OFL-1.1, google/fonts `8b0a1d0`, `emoji-font/` with its OFL.txt; fetched by
+apps/csweb-tv/CMakeLists.txt and checked by SHA-256, not stored in git) as a fallback font.
 Resolved on TV: yes (kit records; our probe ipk installs and runs) `[HW]`.
 
 ## 2. Candidate on-device runtime: art_standalone (Alpine edge, prebuilt)

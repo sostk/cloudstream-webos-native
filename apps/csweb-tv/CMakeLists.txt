@@ -160,17 +160,42 @@ if (NOT WNK_WEBOS)
 endif ()
 
 set(_csweb_fonts "${PROJECT_SOURCE_DIR}/assets/fonts")
+
+# Noto Emoji (monochrome, OFL-1.1), a fallback font for the symbols providers put in names and row
+# titles (⚡, 🎬, 🏏 ...): the TVs' own Noto Emoji is years old and lacks many of them. Not in git: fetched
+# from google/fonts at a pinned commit and checked against its SHA-256, with its licence beside it.
+set(_csweb_emoji "${CMAKE_CURRENT_BINARY_DIR}/emoji-font")
+set(_csweb_emoji_base "https://raw.githubusercontent.com/google/fonts/8b0a1d0f5983c89bc2b93f1b5fb55f9e252744b5/ofl/notoemoji")
+foreach (_f "NotoEmoji%5Bwght%5D.ttf|NotoEmoji.ttf|de6c18832938afc99caf132b39d6a30a19bac7f2e812e28db2535b4608d27551"
+            "OFL.txt|OFL.txt|500bb1ccf43df7bbb522112f9133a52b16e1c35e809632f5d8609b179152de5b")
+    string(REPLACE "|" ";" _f "${_f}")
+    list(GET _f 0 _src)
+    list(GET _f 1 _dst)
+    list(GET _f 2 _sha)
+    foreach (_attempt 1 2 3)
+        file(DOWNLOAD "${_csweb_emoji_base}/${_src}" "${_csweb_emoji}/${_dst}" EXPECTED_HASH SHA256=${_sha} STATUS _st)
+        list(GET _st 0 _code)
+        if (_code EQUAL 0)
+            break()
+        endif ()
+        message(WARNING "CSWeb TV: ${_dst} download attempt ${_attempt} failed: ${_st}")
+    endforeach ()
+    if (NOT _code EQUAL 0)
+        message(FATAL_ERROR "CSWeb TV: could not fetch ${_dst} (${_st})")
+    endif ()
+endforeach ()
 set(_csweb_icons "${CMAKE_CURRENT_SOURCE_DIR}/assets/icons")
 set(_csweb_brand "${CMAKE_CURRENT_SOURCE_DIR}/assets/brand")  # tools/make_brand.py
 add_custom_command(TARGET csweb-tv POST_BUILD
         COMMAND "${CMAKE_COMMAND}" -E copy_directory "${_csweb_fonts}" "$<TARGET_FILE_DIR:csweb-tv>/fonts"
         COMMAND "${CMAKE_COMMAND}" -E copy_directory "${_csweb_icons}" "$<TARGET_FILE_DIR:csweb-tv>/icons"
         COMMAND "${CMAKE_COMMAND}" -E copy_directory "${_csweb_brand}" "$<TARGET_FILE_DIR:csweb-tv>/brand"
+        COMMAND "${CMAKE_COMMAND}" -E copy_directory "${_csweb_emoji}" "$<TARGET_FILE_DIR:csweb-tv>/emoji-font"
         VERBATIM)
 
 set(_csweb_runtimes)
 set(_csweb_bundled_libs ${WNK_FFMPEG_RUNTIME_LIBS})
-set(_csweb_extra_dirs "${_csweb_fonts}" "${_csweb_icons}" "${_csweb_brand}")
+set(_csweb_extra_dirs "${_csweb_fonts}" "${_csweb_icons}" "${_csweb_brand}" "${_csweb_emoji}")
 if (NOT CSWEB_LEGACY)
     if (WNK_WEBOS AND EXISTS "${_csweb_root}/runtime/dist/runtime-aarch64/lib/ld-musl-aarch64.so.1")
         list(APPEND _csweb_runtimes "${_csweb_root}/runtime/dist/runtime-aarch64")

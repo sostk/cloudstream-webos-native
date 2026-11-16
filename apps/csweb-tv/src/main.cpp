@@ -20,6 +20,8 @@ int main(int argc, char **argv) {
     config.fallback_app_id = CSWEB_FALLBACK_APP_ID;
     config.title = CSWEB_WINDOW_TITLE;
     config.worker_threads = 4;
+    // Symbols in provider names and row titles that the TV's fonts lack (CMakeLists.txt: Noto Emoji).
+    config.fallback_fonts = {"emoji-font/NotoEmoji.ttf"};
     config.http = true;
     config.storage = true;
     config.theme = csweb::ui::theme::make_kit_theme();
