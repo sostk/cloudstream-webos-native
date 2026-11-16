@@ -4,7 +4,7 @@ package android.widget;
 import android.content.Context;
 import android.util.AttributeSet;
 
-public abstract class CompoundButton extends Button {
+public abstract class CompoundButton extends Button implements Checkable {
     public interface OnCheckedChangeListener {
         void onCheckedChanged(CompoundButton buttonView, boolean isChecked);
     }
@@ -24,16 +24,19 @@ public abstract class CompoundButton extends Button {
         super(context, attrs, defStyleAttr);
     }
 
+    @Override
     public boolean isChecked() {
         return checked;
     }
 
+    @Override
     public void setChecked(boolean checked) {
         if (this.checked == checked) return;
         this.checked = checked;
         if (listener != null) listener.onCheckedChanged(this, checked);
     }
 
+    @Override
     public void toggle() {
         setChecked(!checked);
     }

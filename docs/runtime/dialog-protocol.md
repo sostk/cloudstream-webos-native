@@ -17,8 +17,8 @@ unchanged; only the Android framework classes underneath it are headless.
 |---|---|
 | `AlertDialog.Builder`: title, message, view (`setView(View)` or a layout id), positive/negative/neutral buttons, `setItems`, `setSingleChoiceItems`, `setMultiChoiceItems`, `setCancelable`, cancel/dismiss listeners | described and answered |
 | `Dialog.setContentView`, `dialog.getButton(…).setOnClickListener` (dialog stays open, as on Android) | supported |
-| Layouts from the plugin's resources via `LayoutInflater.inflate(resources.getLayout(id), …)` | framework widgets only: `LinearLayout`, `FrameLayout`, `RelativeLayout`, `ScrollView`, `TextView`, `EditText`, `Button`, `CheckBox`, `Switch`, `ImageView`, `ImageButton`, `View`/`Space`; `<merge>` as root, `<requestFocus>`; plus AndroidX `CardView` and Material `MaterialCardView` as plain containers |
-| Views built in code (`EditText(ctx)`, `LinearLayout(ctx).addView(…)`) | same widgets |
+| Layouts from the plugin's resources via `LayoutInflater.inflate(resources.getLayout(id), …)` | framework widgets only: `LinearLayout`, `FrameLayout`, `RelativeLayout`, `ScrollView`, `TextView`, `EditText`, `Button`, `CheckBox`, `Switch`, `ImageView`, `ImageButton`, `View`/`Space`; `<merge>` as root, `<requestFocus>`; plus AndroidX `CardView` and Material `MaterialCardView` as plain containers, and Material `MaterialButton` as a `Button` |
+| Views built in code (`EditText(ctx)`, `LinearLayout(ctx).addView(…)`) | same widgets; `MaterialButton(ctx)` is a `Button` (checkable when `setCheckable(true)`), as CNC Verse's settings build theirs |
 | Clickable views that are not buttons (a `TextView` or `ImageButton` with an `OnClickListener`) | described as buttons, named by their text or `contentDescription` |
 | A `CheckBox`/`Switch` without text followed by a plain `TextView` (a row of box and label) | one control with the label's text |
 | `androidx.appcompat.app.AlertDialog.Builder` | as the framework builder (the runtime's own class replaces the APK's, which needs a window) |
@@ -27,6 +27,9 @@ unchanged; only the Android framework classes underneath it are headless.
 | `Handler`/`Looper` (`Looper.getMainLooper()`, `post`, `postDelayed`, messages), `Dispatchers.Main`, `Activity.runOnUiThread` | run on the runtime's main looper, a thread of its own, as on Android's UI thread (see below) |
 | `BitmapFactory.decode*` + `ImageView.setImageBitmap` (PNG, JPEG, GIF, WebP up to 4 MiB) | an `image` the app draws (a login QR code); pixel graphics (`createBitmap`, `Canvas`) unsupported |
 | `context.startActivity(Intent(ACTION_VIEW, Uri.parse("https://…")))` | `open_url` event: the app shows the link to open on a phone; other intents unsupported |
+| "Restart the app" after saving: `startActivity(Intent.makeRestartActivityTask(…))` | done without a restart: the app loads the plugin again when its settings close |
+| `CookieManager.getInstance().removeAllCookies(…)`, `flush()` | the WebView cookie store is always empty (there is no WebView); clearing it succeeds |
+| A plugin without settings (`openSettings` is null) | `unsupported` event "plugin has no settings"; the app says "This plugin has no settings." |
 | `openSettings` casting its context to an Activity type (`context as AppCompatActivity`) | called again with a headless instance of that type (see below) |
 | `Resources.getDrawable` / `ResourcesCompat.getDrawable` | a named placeholder that views keep; nothing is drawn |
 | `Toast.makeText(…).show()` | `toast` event |

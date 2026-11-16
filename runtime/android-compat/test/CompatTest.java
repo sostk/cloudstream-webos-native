@@ -317,6 +317,7 @@ public final class CompatTest {
         looper();
         bitmaps();
         deviceLoginSheet();
+        studioSettings();
         base64();
         uri();
         json();
@@ -421,6 +422,69 @@ public final class CompatTest {
      * polling does), a QR bitmap shown in an ImageView that was hidden, a link opened with ACTION_VIEW,
      * and the sheet closing itself when the login completes. Built and changed on the main looper.
      */
+    /**
+     * CNC Verse's settings (built in code): MaterialButtons added to a layout, a dialog of them that the
+     * app describes and clicks, the WebView cookie store cleared, then "restart the app".
+     */
+    static void studioSettings() throws Exception {
+        File dir = Files.createTempDirectory("csweb-studios").toFile();
+        HeadlessContext ctx = new HeadlessContext(dir, "test.app");
+        TestUi ui = new TestUi();
+        org.csweb.compat.ui.UiHost.install(ui);
+
+        com.google.android.material.button.MaterialButton save = new com.google.android.material.button.MaterialButton(ctx);
+        save.setText("Save");
+        save.setAllCaps(false);
+        eq("material button is a framework button", true, save instanceof android.widget.Button);
+        eq("material button is checkable", true, save instanceof android.widget.Checkable);
+        eq("all caps stored", false, save.isAllCaps());
+        final int[] clicks = {0};
+        save.setOnClickListener(v -> clicks[0]++);
+        save.setChecked(true);
+        eq("not checkable unless asked", false, save.isChecked());
+        save.setCheckable(true);
+        save.performClick();
+        eq("checkable button toggles on click", true, save.isChecked());
+        eq("and its click listener runs", 1, clicks[0]);
+
+        android.widget.LinearLayout root = new android.widget.LinearLayout(ctx);
+        root.setOrientation(android.widget.LinearLayout.VERTICAL);
+        android.widget.CheckBox netflix = new android.widget.CheckBox(ctx);
+        netflix.setText("Netflix");
+        root.addView(netflix);
+        root.addView(save);
+        android.app.AlertDialog d = new android.app.AlertDialog.Builder(ctx).setView(root).create();
+        d.show();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> view = (Map<String, Object>) org.csweb.compat.ui.DialogProtocol.describe(d).get("view");
+        @SuppressWarnings("unchecked")
+        java.util.List<Map<String, Object>> kids = (java.util.List<Map<String, Object>>) view.get("children");
+        eq("material button described as a button", "button", kids.get(1).get("type"));
+        eq("with its text", "Save", kids.get(1).get("text"));
+        Map<String, Object> answer = new java.util.HashMap<>();
+        answer.put("click", kids.get(1).get("key"));
+        org.csweb.compat.ui.DialogProtocol.answer(d, answer);
+        eq("app's click reaches it", 2, clicks[0]);
+        d.dismiss();
+
+        final Boolean[] cleared = {null};
+        android.webkit.CookieManager.getInstance().removeAllCookies(ok -> cleared[0] = ok);
+        android.webkit.CookieManager.getInstance().flush();
+        eq("cookie store cleared", Boolean.TRUE, cleared[0]);
+
+        android.content.Intent launch = ctx.getPackageManager().getLaunchIntentForPackage(ctx.getPackageName());
+        android.content.Intent restart = android.content.Intent.makeRestartActivityTask(launch == null ? null : launch.getComponent());
+        eq("restart intent", true, restart.isRestartTask());
+        ctx.startActivity(restart);  // done: the app loads the plugin again when its settings close
+        boolean threw = false;
+        try {
+            ctx.startActivity(new android.content.Intent(android.content.Intent.ACTION_MAIN));
+        } catch (RuntimeException e) {
+            threw = true;
+        }
+        eq("other activities still unsupported", true, threw);
+    }
+
     static void deviceLoginSheet() throws Exception {
         File dir = Files.createTempDirectory("csweb-login").toFile();
         final HeadlessContext ctx = new HeadlessContext(dir, "test.app");

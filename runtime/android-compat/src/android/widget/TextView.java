@@ -60,6 +60,17 @@ public class TextView extends View {
 
     public void setTextSize(float size) {}
 
+    private boolean allCaps;
+
+    /** Stored only: the app shows the text as given (Material buttons set it false anyway). */
+    public void setAllCaps(boolean allCaps) {
+        this.allCaps = allCaps;
+    }
+
+    public boolean isAllCaps() {
+        return allCaps;
+    }
+
     public void setTextColor(int color) {}
 
     public void setSingleLine(boolean singleLine) {}
