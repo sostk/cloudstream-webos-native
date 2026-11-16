@@ -42,10 +42,8 @@ PillButton &PillButton::set_icon(std::string icon) {
     icon_light_ = icon_dark_ = nullptr;
     shown_dark_ = false;  // new views start light: update() picks the variant again
     if (!icon_.empty()) {
-        icon_light_ = &add<ImageView>(icon_url(icon_));
-        icon_dark_ = &add<ImageView>(icon_url(icon_, true));
-        icon_light_->set_fit(ImageFit::Contain);
-        icon_dark_->set_fit(ImageFit::Contain);
+        icon_light_ = &add<IconView>(icon_url(icon_));
+        icon_dark_ = &add<IconView>(icon_url(icon_, true));
         icon_dark_->set_visible(false);
     }
     invalidate();

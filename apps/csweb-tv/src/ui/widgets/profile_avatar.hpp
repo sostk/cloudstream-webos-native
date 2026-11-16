@@ -6,6 +6,8 @@
 // translucent circle with a plus.
 #pragma once
 
+#include "ui/widgets/icons.hpp"
+
 #include "wnk/ui/anim.hpp"
 #include "wnk/ui/widgets.hpp"
 
@@ -39,7 +41,7 @@ class ProfileAvatar : public wnk::ui::View {
     bool current_ = false;
     wnk::ui::Tween grow_;
     float laid_out_scale_ = 1;
-    wnk::ui::ImageView *badge_icon_ = nullptr;
+    IconView *badge_icon_ = nullptr;
 };
 
 }  // namespace csweb::ui

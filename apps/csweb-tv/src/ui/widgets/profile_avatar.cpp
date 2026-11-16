@@ -29,8 +29,7 @@ ProfileAvatar &ProfileAvatar::set_badge(Badge b) {
     if (badge_icon_) remove_child(badge_icon_);
     badge_icon_ = nullptr;
     if (b != Badge::None) {
-        badge_icon_ = &add<ImageView>(icon_url(b == Badge::Lock ? "lock" : "settings"));
-        badge_icon_->set_fit(ImageFit::Contain);
+        badge_icon_ = &add<IconView>(icon_url(b == Badge::Lock ? "lock" : "settings"));
     }
     invalidate();
     return *this;

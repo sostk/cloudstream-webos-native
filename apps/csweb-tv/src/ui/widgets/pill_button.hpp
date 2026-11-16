@@ -10,6 +10,7 @@
 #pragma once
 
 #include "ui/widgets/glass.hpp"
+#include "ui/widgets/icons.hpp"
 
 #include "wnk/ui/widgets.hpp"
 
@@ -43,8 +44,8 @@ class PillButton : public wnk::ui::Button {
     bool shown_dark_ = false;
     bool frosted_ = false;
     glass::Surface surface_;
-    wnk::ui::ImageView *icon_light_ = nullptr;
-    wnk::ui::ImageView *icon_dark_ = nullptr;
+    IconView *icon_light_ = nullptr;
+    IconView *icon_dark_ = nullptr;
 };
 
 }  // namespace csweb::ui
