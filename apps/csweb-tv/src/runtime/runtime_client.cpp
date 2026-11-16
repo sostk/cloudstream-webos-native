@@ -135,7 +135,7 @@ void RuntimeClient::handle_line(const std::string &line) {
         if (on_ready) on_ready();
         return;
     }
-    if ((event == "dialog" || event == "dialog_closed" || event == "toast") && on_dialog) on_dialog(j);
+    if ((event == "dialog" || event == "dialog_closed" || event == "toast" || event == "open_url") && on_dialog) on_dialog(j);
     const std::string id = j.value("id", "");
     auto it = open_.find(id);
     if (it == open_.end()) {

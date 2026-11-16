@@ -51,7 +51,7 @@ class RuntimeClient {
 
     std::function<void()> on_ready;                              // the service printed "ready"
     std::function<void(State)> on_state;                         // every state change
-    // dialog, dialog_closed and toast events of every request (the app shows plugin UI wherever it
+    // dialog, dialog_closed, toast and open_url events of every request (the app shows plugin UI wherever it
     // comes from); they still reach the request's own handler too.
     std::function<void(const nlohmann::json &)> on_dialog;
     std::function<void(const nlohmann::json &)> on_unrouted;     // events without a known id

@@ -35,6 +35,8 @@ public class LayoutInflater {
     private static final Set<String> VIEWS = new HashSet<>(Arrays.asList(
             "View", "Space", "LinearLayout", "FrameLayout", "RelativeLayout", "ScrollView", "TextView", "EditText",
             "Button", "CheckBox", "Switch", "ImageView", "ImageButton"));
+    private static final Set<String> CARDS = new HashSet<>(Arrays.asList(
+            "androidx.cardview.widget.CardView", "com.google.android.material.card.MaterialCardView"));
 
     /** Types only: AndroidX's FragmentManager builds a Factory2 for fragment tags; nothing installs one here. */
     public interface Factory {
@@ -143,9 +145,13 @@ public class LayoutInflater {
         if (simple.startsWith("android.widget.") || simple.startsWith("android.view.")) {
             simple = simple.substring(simple.lastIndexOf('.') + 1);
         }
-        if (!VIEWS.contains(simple)) throw Unsupported.of("view <" + tag + "> (only framework widgets are rendered on webOS)");
+        // Cards are containers (Kartoons' settings, issue #38); the app draws its own panels.
+        if (CARDS.contains(simple)) simple = simple.endsWith("MaterialCardView") ? "MaterialCardView" : "CardView";
+        else if (!VIEWS.contains(simple)) throw Unsupported.of("view <" + tag + "> (only framework widgets are rendered on webOS)");
         View v;
         switch (simple) {
+            case "MaterialCardView": v = new com.google.android.material.card.MaterialCardView(context); break;
+            case "CardView": v = new androidx.cardview.widget.CardView(context); break;
             case "LinearLayout": v = new LinearLayout(context); break;
             case "FrameLayout": v = new FrameLayout(context); break;
             case "RelativeLayout": v = new RelativeLayout(context); break;
