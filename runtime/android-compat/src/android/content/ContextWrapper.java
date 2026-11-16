@@ -28,5 +28,6 @@ public class ContextWrapper extends Context {
     @Override public File getCacheDir() { return mBase.getCacheDir(); }
     @Override public ClassLoader getClassLoader() { return mBase.getClassLoader(); }
     @Override public android.content.res.Resources getResources() { return mBase.getResources(); }
+    @Override public android.content.res.AssetManager getAssets() { return mBase.getAssets(); }
     @Override public Object getSystemService(String name) { return mBase.getSystemService(name); }
 }

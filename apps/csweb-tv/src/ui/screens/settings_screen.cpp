@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "ui/screens/settings_screen.hpp"
 
+#include "runtime/network_settings.hpp"
 #include "settings/preferences.hpp"
 #include "ui/dialogs/clear_watch_history.hpp"
 #include "ui/dialogs/multi_select.hpp"
@@ -76,6 +77,21 @@ SettingsScreen::SettingsScreen(app::Services &s) : Screen("Settings"), s_(s) {
     media_->set_description("Which sources Home and Search use");
     media_->name = "settings.media";
     list.add<ValueRow>("Test extensions", "", [this](Ui &ui) { s_.router->open_provider_tests(ui); }).name = "settings.tests";
+
+    section(list, "Network");
+    {
+        // SettingsGeneral: "DNS over HTTPS — Useful for bypassing ISP blocks"; applied at once (initClient).
+        std::vector<std::string> names;
+        for (const auto &d : settings::dns_choices()) names.push_back(d.name);
+        auto &c = list.add<Choice>("DNS over HTTPS", names, settings::dns_index(settings::dns_value(*st)),
+                                   [this, st](Ui &, int i) {
+                                       const int v = settings::dns_choices()[static_cast<size_t>(i)].value;
+                                       st->set(settings::kDns, v);
+                                       runtime::send_dns(*s_.runtime, v);
+                                   });
+        c.set_description("Useful for bypassing ISP blocks. Applies to plugins' requests");
+        c.name = "settings.dns";
+    }
 
     section(list, "Player");
     {

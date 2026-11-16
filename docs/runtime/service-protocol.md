@@ -31,6 +31,7 @@ The first line on stdout is `{"event":"ready","protocol":1}`. Plugin and runtime
 | `details` | `provider`, `url`, [`limit`] | `details` (plain properties plus `backgroundPosterUrl`, `logoUrl`, `duration`, `score`, `tags`, `actors`, `recommendations`, `trailers`, `seasons`, `showStatus`), `episode`… (`dub` for anime episode lists) |
 | `links` | `provider`, `url` (the data from details), [`withHeaders`] | `link`… (`linkType`, `quality`, `referer`; header values only with `withHeaders`, names otherwise), `subtitle`…, `links_returned` |
 | `settings` | `plugin` | `dialog`… (see dialog-protocol.md) |
+| `network` | `dns` (CloudStream's `dns_key` value: 0 system resolver, 1 Google, 2 Cloudflare, 4 AdGuard, 5 DNS.WATCH, 6 Quad9, 7 DNS.SB, 8 Canadian Shield) | `network` (`clients` changed); applied before the next request is read, so every later request (loads too) resolves through it. CloudStream's `initClient`: `app` and `insecureApp` get the DoH resolver from its `DohProviders.kt` |
 | `cancel` | `target` (a request id) | the target ends with `error` (`Cancelled`) and `done ok:false` |
 | `shutdown` | | waits for earlier requests, then exits |
 | `answer` | `dialog`, plus the dialog answer fields | none; routed to the request showing that dialog |

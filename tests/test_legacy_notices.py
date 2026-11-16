@@ -73,7 +73,7 @@ class LegacyNoticesTest(unittest.TestCase):
         self.prepare()
         TOOL.finish(self.project, self.rootfs, self.dist)
         text = (self.dist / "licenses/NOTICES.md").read_text()
-        self.assertIn("ARMv7 Alpine inputs are not yet pinned", text)
+        self.assertIn("ARMv7 Alpine inputs are pinned in `runtime/inputs-armv7.lock`", text)
         self.assertIn("ART is rebuilt", text)
         self.assertIn("libcsweb_legacy_math.so", text)
         self.assertNotIn("Copied unchanged from the signed Alpine edge packages pinned", text)

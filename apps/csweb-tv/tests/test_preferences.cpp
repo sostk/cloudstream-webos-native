@@ -77,6 +77,28 @@ TEST("dolby_preferences_stored") {
     CHECK(prefer_dolby_atmos(s) == true);
 }
 
+TEST("dns_over_https_uses_cloudstream_values") {
+    // dns_pref_values: OpenDNS (3) is commented out in CloudStream's DohProviders.kt.
+    std::vector<int> values;
+    for (const auto &d : dns_choices()) values.push_back(d.value);
+    CHECK(values == std::vector<int>({0, 1, 2, 4, 5, 6, 7, 8}));
+    CHECK(std::string(dns_choices()[2].name) == "Cloudflare");
+    wnk::async::WorkerPool pool(1);
+    SettingsStore s(nullptr, pool);
+    CHECK(dns_value(s) == 0);  // none by default
+    s.set(kDns, 2);
+    CHECK(dns_value(s) == 2);
+    CHECK(dns_index(2) == 2);
+    CHECK(dns_index(8) == 7);
+    s.set(kDns, 3);  // not offered: the system resolver
+    CHECK(dns_value(s) == 0);
+    s.set(kDns, -1);
+    CHECK(dns_value(s) == 0);
+    s.set(kDns, 99);
+    CHECK(dns_value(s) == 0);
+    CHECK(std::string(kDns) == "dns_key");
+}
+
 TEST("preferred_providers_filter_language_home_and_media") {
     const std::vector<Provider> all = {prov("Dailymotion", {"Others"}), prov("Archive", {"Movie", "Others"}),
                                        prov("Adult", {"NSFW"}), prov("Francais", {"Movie"}, "fr"),

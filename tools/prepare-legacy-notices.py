@@ -111,7 +111,7 @@ def finish(project, rootfs, dist):
            "licence column is Alpine's (SPDX). Source: the package recipe at the aports commit (patches\n"
            "included) and the upstream source it names; licence texts from that source are in `texts/<origin>/`.")
     new = ("This inventory describes the ARMv7 files actually shipped by this runtime, as recorded in\n"
-           "`MANIFEST.json` and `packages.tsv`. ARMv7 Alpine inputs are not yet pinned in a lock file.\n"
+           "`MANIFEST.json` and `packages.tsv`. ARMv7 Alpine inputs are pinned in `runtime/inputs-armv7.lock`.\n"
            "ART is rebuilt from the listed Alpine recipe against wolfSSL 5.9.4, without ART source\n"
            "patches, and signed locally by CI (`runtime/build-art-armv7.sh`). Other Alpine files are\n"
            "copied from signed upstream packages except the rebuilt wolfSSL library described below.\n"

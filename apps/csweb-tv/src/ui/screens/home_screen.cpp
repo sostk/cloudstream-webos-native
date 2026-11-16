@@ -288,15 +288,18 @@ void HomeScreen::request_section(Ui &, int index) {
         std::vector<runtime::SearchResult> items;
     };
     auto acc = std::make_shared<std::vector<List>>();
+    auto empty = std::make_shared<bool>(false);  // the provider answered with nothing ("empty", "unsupported")
     const runtime::Provider *p = s_.plugins->provider(provider);
     nlohmann::json req = {{"op", "mainpage"}, {"provider", provider}, {"section", index}, {"page", 1}, {"limit", 60}};
     if (p && p->main_page_timeout_ms > 0) req["timeout"] = (p->main_page_timeout_ms + 999) / 1000;
     auto id = std::make_shared<runtime::RuntimeClient::RequestId>(0);
     *id = s_.runtime->request(
         req,
-        [acc](const nlohmann::json &e) {
+        [acc, empty](const nlohmann::json &e) {
             const std::string ev = e.value("event", "");
-            if (ev == "section") {
+            if (ev == "empty" || ev == "unsupported") {
+                *empty = true;
+            } else if (ev == "section") {
                 List l;
                 l.name = e.value("name", "");
                 l.horizontal = e.contains("horizontal") && e["horizontal"].is_boolean() && e["horizontal"].get<bool>();
@@ -306,13 +309,16 @@ void HomeScreen::request_section(Ui &, int index) {
                 acc->back().items.push_back(runtime::parse_search_result(e));
             }
         },
-        core::guarded(life_.weak(), [this, acc, provider, id](bool ok, const std::string &error) {
+        core::guarded(life_.weak(), [this, acc, empty, provider, index, id](bool ok, const std::string &error) {
             requests_.erase(std::remove(requests_.begin(), requests_.end(), *id), requests_.end());
             if (provider != provider_) return;
             size_t items = 0;
             for (const List &l : *acc) items += l.items.size();
             if (!ok && items == 0) {
-                WNK_LOGW(kCat, "home: section failed: %s", error.c_str());
+                // CloudStream leaves empty sections out; a cancelled one was replaced (a chip, a new source).
+                if (*empty) WNK_LOGI(kCat, "home: section %d empty", index);
+                else if (error == runtime::kCancelledByApp) WNK_LOGD(kCat, "home: section %d cancelled", index);
+                else WNK_LOGW(kCat, "home: section %d failed: %s", index, error.c_str());
             }
             if (items > 0 && !first_row_logged_) {
                 // Start-up measurements (docs/performance.md): when Home has something to show.

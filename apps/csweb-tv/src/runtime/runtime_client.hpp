@@ -25,6 +25,9 @@
 
 namespace csweb::runtime {
 
+// The error text of a request the app cancelled (Service.cancel), for callers that treat it as no error.
+inline constexpr const char *kCancelledByApp = "cancelled by the app";
+
 class RuntimeClient {
  public:
     enum class State { Stopped, Starting, Ready, Failed };
