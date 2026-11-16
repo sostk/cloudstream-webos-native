@@ -1,6 +1,6 @@
 # A WebView stand-in from the TV's web engine (to do)
 
-Status 2026-11-09: feasibility partly tested, work paused. Device: LG OLED65C1PTB, webOS 6.5.3,
+Status 2026-11-16: the TV's engine is too old for the pages tested (Cloudflare's challenge and PPV's player both need newer JavaScript/WebAssembly); work stopped. Device: LG OLED65C1PTB, webOS 6.5.3,
 firmware 03.53.45, developer mode (rooted).
 
 ## Why
@@ -24,6 +24,7 @@ Some plugins need Android's `android.webkit.WebView`, which the runtime does not
 | Hidden page | A web app with `"noWindow": true` still has a page DevTools can drive; nothing is shown. Its `appinfo.json` needs an `icon`, or the app manager does not register it. |
 | Request sniffing | Works: `Network.requestWillBeSent` saw all 55 requests of `one.1cinevood.beer`, scripts included. |
 | Cloudflare challenge | **Fails.** The challenge script throws `SyntaxError: Unexpected token '.'`: optional chaining needs Chrome 80+. No `cf_clearance` after 46 s. |
+| Stream sniffer page (PPV, 2026-11-16) | **Fails.** PPV's embed page (all 172 events use one host, `taifood-blog.asia/embed/...`), loaded with `Referer: https://ppv.st/` as the plugin does: `SyntaxError: Unexpected token '('`, then `ReferenceError: aclib is not defined` and `WebAssembly.instantiateStreaming(): invalid local type`; 4 requests in 45 s, no `.m3u8`. The same probe in Chrome 146 on a PC: 19 requests, the player's `.m3u8` after 7.7 s. |
 
 ## Workarounds for users now
 
@@ -34,6 +35,11 @@ Some plugins need Android's `android.webkit.WebView`, which the runtime does not
   own DNS server (for example 1.1.1.1) in the webOS network settings.
 
 ## Next steps
+
+After the PPV result (2026-11-16), a stand-in on the TV's Chromium 79 would not serve the plugins seen so
+far. The steps below remain only for a sniffer whose page is shown to run on Chrome 79 first. The
+probe (a hidden `noWindow` web app, then DevTools on port 9998, which opens once that app runs) takes
+minutes per page.
 
 1. **Check the pages:** do the sniffer plugins' embed pages run on Chrome 79? Load them in the hidden
    test page and look for script syntax errors and `.m3u8` requests. Candidate hosts: NTV's
