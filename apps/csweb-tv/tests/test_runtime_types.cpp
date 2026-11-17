@@ -8,6 +8,31 @@
 using namespace csweb::runtime;
 using nlohmann::json;
 
+TEST("unescape_url: JSON escapes a plugin left in a URL") {
+    // PlayZTV (2026-11-18) gave "https:\/\/<host>\/playlist\/60311\/load-playlist-multi".
+    CHECK_EQ(unescape_url(R"(https:\/\/h.example\/playlist\/1\/load)"), std::string("https://h.example/playlist/1/load"));
+    CHECK_EQ(unescape_url(R"(https://h.example/v.m3u8?a=1&b=2)"), std::string("https://h.example/v.m3u8?a=1&b=2"));
+    CHECK_EQ(unescape_url(R"(http:\/\/h.example\/a=b)"), std::string("http://h.example/a=b"));
+    // Unchanged: no escapes, control or non-ASCII escapes, a backslash that is not an escape,
+    // and anything that does not become an http(s) URL.
+    CHECK_EQ(unescape_url("https://h.example/a%5Cb"), std::string("https://h.example/a%5Cb"));
+    CHECK_EQ(unescape_url(R"(https://h.example/a\u000ab)"), std::string(R"(https://h.example/a\u000ab)"));
+    CHECK_EQ(unescape_url(R"(https://h.example/aé)"), std::string(R"(https://h.example/aé)"));
+    CHECK_EQ(unescape_url(R"(https://h.example/a\b)"), std::string(R"(https://h.example/a\b)"));
+    CHECK_EQ(unescape_url(R"(magnet:?xt=urn:btih:abc\/x)"), std::string(R"(magnet:?xt=urn:btih:abc\/x)"));
+    CHECK_EQ(unescape_url(""), std::string());
+    // Applied where the parsers read URLs.
+    auto l = parse_link(json::parse(R"J({"event":"link","name":"N","url":"https:\\/\\/h.example\\/p","referer":"https:\\/\\/r.example\\/",
+        "linkType":"VIDEO","audioTracks":[{"url":"https:\\/\\/h.example\\/a.m4a"}],
+        "drm":{"uuid":"e2719d58-a985-b3c9-781a-b030af78d30e","licenseUrl":"https:\\/\\/h.example\\/lic"}})J"));
+    CHECK_EQ(l.url, std::string("https://h.example/p"));
+    CHECK_EQ(l.referer, std::string("https://r.example/"));
+    CHECK_EQ(l.audio_tracks.at(0).url, std::string("https://h.example/a.m4a"));
+    CHECK_EQ(l.drm->license_url, std::string("https://h.example/lic"));
+    auto s = parse_subtitle(json::parse(R"J({"event":"subtitle","lang":"English","url":"https:\\/\\/h.example\\/s.vtt"})J"));
+    CHECK_EQ(s.url, std::string("https://h.example/s.vtt"));
+}
+
 TEST("provider_and_search") {
     auto p = parse_provider(json::parse(R"J({"event":"provider","name":"Librivox Audiobook","plugin":"/x/L.cs3",
         "mainUrl":"https://librivox.org","lang":"en","hasMainPage":true,"supportedTypes":["Others"],"mainPage":["Latest Audiobook"]})J"));

@@ -92,6 +92,12 @@ Provider parse_provider(const nlohmann::json &e);
 SearchResult parse_search_result(const nlohmann::json &e);
 Episode parse_episode(const nlohmann::json &e);
 Details parse_details(const nlohmann::json &e);
+// A media URL as a plugin gave it, with JSON string escapes the plugin left in undone: some plugins
+// copy a URL out of a JSON body with a regex instead of parsing it, so links arrive as
+// "https:\/\/host\/path" or with "&" for "&". Only "\/" and "\uXXXX" escapes of printable ASCII
+// are undone, and only when the result is an http(s) URL; anything else is returned unchanged.
+std::string unescape_url(const std::string &url);
+
 Link parse_link(const nlohmann::json &e);
 Subtitle parse_subtitle(const nlohmann::json &e);
 

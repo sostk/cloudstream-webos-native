@@ -140,12 +140,48 @@ Details parse_details(const json &e) {
     return d;
 }
 
+std::string unescape_url(const std::string &url) {
+    if (url.find('\\') == std::string::npos) return url;
+    auto hex = [](char c) -> int {
+        if (c >= '0' && c <= '9') return c - '0';
+        if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+        if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+        return -1;
+    };
+    std::string out;
+    out.reserve(url.size());
+    for (size_t i = 0; i < url.size(); ++i) {
+        if (url[i] == '\\' && i + 1 < url.size() && url[i + 1] == '/') {
+            out += '/';
+            ++i;
+            continue;
+        }
+        if (url[i] == '\\' && i + 5 < url.size() && url[i + 1] == 'u') {
+            int v = 0;
+            bool ok = true;
+            for (size_t k = 2; k < 6 && ok; ++k) {
+                const int h = hex(url[i + k]);
+                ok = h >= 0;
+                v = v * 16 + h;
+            }
+            if (ok && v >= 0x21 && v < 0x7f) {
+                out += static_cast<char>(v);
+                i += 5;
+                continue;
+            }
+        }
+        out += url[i];
+    }
+    const bool web = out.rfind("http://", 0) == 0 || out.rfind("https://", 0) == 0;
+    return web ? out : url;
+}
+
 Link parse_link(const json &e) {
     Link l;
     l.name = str(e, "name");
     l.source = str(e, "source");
-    l.url = str(e, "url");
-    l.referer = str(e, "referer");
+    l.url = unescape_url(str(e, "url"));
+    l.referer = unescape_url(str(e, "referer"));
     l.link_type = str(e, "linkType");
     l.quality = static_cast<int>(num(e, "quality", 400));
     if (auto it = e.find("headers"); it != e.end() && it->is_object()) {
@@ -159,7 +195,7 @@ Link parse_link(const json &e) {
         d.kty = str(*it, "kty");
         d.kid = str(*it, "kid");
         d.key = str(*it, "key");
-        d.license_url = str(*it, "licenseUrl");
+        d.license_url = unescape_url(str(*it, "licenseUrl"));
         if (d.license_url == "null") d.license_url.clear();
         if (auto p = it->find("keyRequestParameters"); p != it->end() && p->is_object()) {
             for (auto v = p->begin(); v != p->end(); ++v) {
@@ -172,7 +208,7 @@ Link parse_link(const json &e) {
         for (const auto &t : *it) {
             if (!t.is_object() || str(t, "url").empty()) continue;
             AudioTrack a;
-            a.url = str(t, "url");
+            a.url = unescape_url(str(t, "url"));
             if (auto h = t.find("headers"); h != t.end() && h->is_object()) {
                 for (auto v = h->begin(); v != h->end(); ++v) {
                     if (v.value().is_string()) a.headers[v.key()] = v.value().get<std::string>();
@@ -203,7 +239,7 @@ const char *drm_name(const std::string &uuid) {
 bool Drm::clearkey() const { return std::string(drm_name(uuid)) == "ClearKey"; }
 
 Subtitle parse_subtitle(const json &e) {
-    Subtitle s{str(e, "lang"), str(e, "url"), {}};
+    Subtitle s{str(e, "lang"), unescape_url(str(e, "url")), {}};
     if (auto it = e.find("headers"); it != e.end() && it->is_object()) {
         for (auto h = it->begin(); h != it->end(); ++h) {
             if (h.value().is_string()) s.headers[h.key()] = h.value().get<std::string>();
