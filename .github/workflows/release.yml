@@ -5,6 +5,7 @@
 #      the pinned inputs, full TV package checked by check-package
 #   3. creates the GitHub release v<version> on this commit with the package, its SHA-256 and the
 #      Homebrew Channel manifest (org.csweb.tv.manifest.json); a full release is marked latest
+#      The notes start with docs/release-notes/<version>.md (the changelog) when that file exists.
 # Releases are made from main only. CI builds and checks the package; it does not run it on a TV.
 name: Release
 
@@ -159,7 +160,12 @@ jobs:
           kit=$(tools/fetch-kit.sh --print)
           inputs=$(sed -n 's#^\# mirror: .*/download/##p' runtime/inputs.lock)
           sha=$(cut -d' ' -f1 dist/SHA256SUMS)
-          cat > notes.md <<EOF
+          # The changelog for this version (docs/release-notes/<version>.md) comes first, when there is one.
+          : > notes.md
+          if [[ -f "docs/release-notes/$VERSION.md" ]]; then
+            { cat "docs/release-notes/$VERSION.md"; echo; echo "---"; echo; } >> notes.md
+          fi
+          cat >> notes.md <<EOF
           CSWeb TV $VERSION for LG webOS TVs (ARM), built by CI from commit \`$GITHUB_SHA\`.
 
           **Install:** \`org.csweb.tv_${VERSION}_arm.ipk\` with Developer Mode (\`ares-install\`) or the kit's \`tools/install.sh\`.
