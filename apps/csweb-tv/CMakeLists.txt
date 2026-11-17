@@ -115,6 +115,7 @@ add_library(csweb_player STATIC
         src/player/link_priority.cpp
         src/player/media_factory.cpp
         src/player/merged_source.cpp
+        src/player/sniffing_source.cpp
         src/player/subtitle_file.cpp)
 target_link_libraries(csweb_player PUBLIC csweb_core wnk_media wnk_media_ffmpeg wnk_media_ndl wnk_media_starfish)
 
@@ -262,7 +263,7 @@ if (WNK_BUILD_TESTS)
     target_link_libraries(csweb_test_pill_button PRIVATE wnk_app)
     target_compile_definitions(csweb_test_pill_button PRIVATE CSWEB_ASSETS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/assets")
     add_test(NAME csweb.pill_button COMMAND csweb_test_pill_button)
-    foreach (t link_priority merged_source subtitle_file)
+    foreach (t link_priority merged_source sniffing_source subtitle_file)
         add_executable(csweb_test_${t} tests/test_${t}.cpp)
         target_include_directories(csweb_test_${t} PRIVATE "${PROJECT_SOURCE_DIR}/tests/unit")
         target_link_libraries(csweb_test_${t} PRIVATE csweb_player)

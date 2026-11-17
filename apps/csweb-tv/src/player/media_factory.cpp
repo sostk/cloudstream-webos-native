@@ -3,6 +3,7 @@
 
 #include "player/link_priority.hpp"
 #include "player/merged_source.hpp"
+#include "player/sniffing_source.hpp"
 
 #include "wnk/log.hpp"
 #include "wnk/media/adaptive_source.hpp"
@@ -63,15 +64,15 @@ std::unique_ptr<MediaSource> make_source(const runtime::Link &link, std::shared_
     wnk::net::Headers headers;
     for (auto &h : link_headers(link)) headers.push_back(std::move(h));
     const ContentKeys keys = clearkey_keys(link);
-    if (is_adaptive(link)) {
+    auto make_adaptive = [link, http, device, max_height, headers, keys]() -> std::unique_ptr<MediaSource> {
         AdaptiveSourceOptions o;
         o.keys = keys;
         if (link.drm && link.drm->clearkey()) {
             o.license_url = link.drm->license_url;  // asked only for key IDs the link gave no key for
             o.license_headers = headers;
         }
-        o.http = std::move(http);
-        o.headers = std::move(headers);
+        o.http = http;
+        o.headers = headers;
         // ExoPlayer plays whatever the device decodes; the TV's decoders take VP9 and AV1 too (WebM
         // DASH, YouTube manifests). HEVC and H.264 stay preferred at equal picture size.
         o.video_codecs = {CodecId::Hevc, CodecId::H264, CodecId::Vp9, CodecId::Av1};
@@ -80,12 +81,17 @@ std::unique_ptr<MediaSource> make_source(const runtime::Link &link, std::shared_
         if (max_height > 0 && max_height < o.max_height) o.max_height = max_height;
         o.dolby_vision = device.dolby_vision == true;
         return std::make_unique<AdaptiveSource>(o);
-    }
+    };
+    if (is_adaptive(link)) return make_adaptive();
     FfmpegSourceOptions o;
     o.http = http;
-    o.http_stream.headers = std::move(headers);
+    o.http_stream.headers = headers;
     o.decryption_keys = keys;  // Common Encryption in a single MP4 file
-    auto video = std::make_unique<FfmpegSource>(std::move(o));
+    std::unique_ptr<MediaSource> video = std::make_unique<FfmpegSource>(std::move(o));
+    if (link.link_type == "VIDEO" || link.link_type.empty()) {
+        // A playlist typed VIDEO (no .m3u8/.mpd in its URL): tried as a file first (sniffing_source.hpp).
+        video = std::make_unique<SniffingSource>(std::move(video), http, headers, make_adaptive);
+    }
     if (link.audio_tracks.empty()) return video;
     // CS3IPlayer.getAudioSources: each AudioFile with its own headers (CloudStream's user agent unless
     // they name one), merged with the video.
