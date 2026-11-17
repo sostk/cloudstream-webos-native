@@ -6,12 +6,17 @@
 //   csweb-media-probe <url> [VIDEO|M3U8|DASH] [seconds] [seek to, seconds]
 #include "player/media_factory.hpp"
 
+#include "wnk/log.hpp"
 #include "wnk/media/adaptive_source.hpp"
 #include "wnk/net/http.hpp"
 
+#include <nlohmann/json.hpp>
+
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <fstream>
 #include <string>
 
 using namespace wnk::media;
@@ -34,9 +39,27 @@ int main(int argc, char **argv) {
         std::fprintf(stderr, "usage: %s <url> [VIDEO|M3U8|DASH] [seconds] [seek to]\n", argv[0]);
         return 2;
     }
+    // The media pipeline's own log lines (live join, refreshes, retries) on stderr.
+    static wnk::log::Logger logger(wnk::log::Level::Info);
+    logger.add_sink(std::make_unique<wnk::log::StderrSink>());
+    wnk::log::set_default_logger(&logger);
     csweb::runtime::Link link;
     link.url = argv[1];
     link.link_type = argc > 2 ? argv[2] : "VIDEO";
+    // CSWEB_PROBE_LINK=<file>: one "link" event line from the runtime (links --withHeaders true), so the
+    // link's headers and DRM apply as in the player; <url> and the type argument are then ignored.
+    if (const char *path = std::getenv("CSWEB_PROBE_LINK")) {
+        std::ifstream in(path);
+        std::string line;
+        std::getline(in, line);
+        const auto j = nlohmann::json::parse(line, nullptr, false);
+        if (j.is_discarded() || !j.is_object()) {
+            std::fprintf(stderr, "CSWEB_PROBE_LINK: not a JSON link event\n");
+            return 2;
+        }
+        link = csweb::runtime::parse_link(j);
+        std::printf("link from %s: %zu header(s), drm %d\n", path, link.headers.size(), link.drm.has_value());
+    }
     // CSWEB_PROBE_CLEARKEY="kid:key" (hex or JWK base64url): a ClearKey DrmExtractorLink.
     if (const char *ck = std::getenv("CSWEB_PROBE_CLEARKEY")) {
         const std::string v = ck;
@@ -95,7 +118,12 @@ int main(int argc, char **argv) {
         int video = 0, audio = 0, subs = 0;
         int64_t first_v = kNoTime, last_v = kNoTime, last_a = kNoTime;
         int64_t gap_v = 0, gap_a = 0;  // largest jump between consecutive packets (decode order)
-        for (int i = 0; i < 20000; i++) {
+        // Wall clock against media time: a live stream that plays steadily delivers media at least as
+        // fast as real time once the start-up buffer is used; "behind" is how far delivery lags.
+        const auto t0 = std::chrono::steady_clock::now();
+        double worst_behind = 0, wall = 0;
+        int64_t newest_us = kNoTime;
+        for (int i = 0; i < 200000; i++) {
             Packet p;
             const auto r = src->read(&p, &err);
             if (r == MediaSource::Read::EndOfStream) break;
@@ -104,6 +132,11 @@ int main(int argc, char **argv) {
                 return false;
             }
             if (from_us == kNoTime && p.pts_us != kNoTime) from_us = p.pts_us;
+            wall = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+            if (p.pts_us != kNoTime && (newest_us == kNoTime || p.pts_us > newest_us)) {
+                newest_us = p.pts_us;
+                worst_behind = std::max(worst_behind, wall - (newest_us - from_us) / 1e6);
+            }
             if (p.type == TrackType::Video) {
                 ++video;
                 if (first_v == kNoTime) first_v = p.pts_us;
@@ -122,6 +155,10 @@ int main(int argc, char **argv) {
         std::printf("%s: %d video (%.2f..%.2f s), %d audio (to %.2f s), %d subtitle packets; largest audio step %.3f s%s\n",
                     what, video, first_v / 1e6, last_v / 1e6, audio, last_a / 1e6, subs, gap_a / 1e6,
                     gap_v != 0 ? ", video keyframe jump" : "");
+        if (newest_us != kNoTime) {
+            std::printf("%s: %.1f s of media in %.1f s wall; delivery at most %.1f s behind real time\n", what,
+                        (newest_us - from_us) / 1e6, wall, worst_behind);
+        }
         return video > 0 || audio > 0;
     };
     if (!read_for("start", mi.duration_us == kNoTime ? kNoTime : 0)) return 1;
