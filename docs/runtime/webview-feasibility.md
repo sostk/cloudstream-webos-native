@@ -26,6 +26,30 @@ Some plugins need Android's `android.webkit.WebView`, which the runtime does not
 | Cloudflare challenge | **Fails.** The challenge script throws `SyntaxError: Unexpected token '.'`: optional chaining needs Chrome 80+. No `cf_clearance` after 46 s. |
 | Stream sniffer page (PPV, 2026-11-16) | **Fails.** PPV's embed page (all 172 events use one host, `taifood-blog.asia/embed/...`), loaded with `Referer: https://ppv.st/` as the plugin does: `SyntaxError: Unexpected token '('`, then `ReferenceError: aclib is not defined` and `WebAssembly.instantiateStreaming(): invalid local type`; 4 requests in 45 s, no `.m3u8`. The same probe in Chrome 146 on a PC: 19 requests, the player's `.m3u8` after 7.7 s. |
 
+## Bundling Android's own WebView (checked 2026-11-19)
+
+Source: Chromium's public Android arm64 snapshot r1748901 (`chromium-browser-snapshots/Android_Arm64`),
+`SystemWebView.apk` (305 MiB). Not run on a TV; this is a static check of what it needs.
+
+| | arm64-v8a | armeabi-v7a (legacy TVs) |
+|---|---|---|
+| `libwebviewchromium.so` | 194 MiB | 97 MiB |
+| gzip -6 | 82 MiB | 54 MiB |
+
+- **Native side:** links Android's bionic `libc`/`libm`/`libdl` (symbol versions `LIBC_N`..`LIBC_Q`) and
+  `libandroid`, `liblog`, `libbinder_ndk`, `libjnigraphics`, `libaaudio`, `libmediandk`; 639 undefined
+  symbols, including `AHardwareBuffer`, `ANativeWindow`, `ALooper`, `ASharedMemory`. Our ART runtime is a
+  musl/glibc process, so it cannot `dlopen` a bionic library; it would need a second, bionic-based
+  process with Android's linker and shims for all eight libraries.
+- **Java side:** `classes.dex` uses 284 framework classes (`android.os` 45, `widget` 35, `view` 34, `app` 24,
+  `graphics` 21, `webkit` 18, `media` 18, ...). WebView is also started by the framework itself
+  (`WebViewFactory`, `WebViewDelegate`, HWUI draw functors, a multi-process renderer over Binder). None of
+  this exists in the runtime, and the "no rewritten providers" rule rules out patching the glue.
+- **Verdict:** not practical. It amounts to running an Android userland on the TV (Waydroid-like, which
+  needs Binder in the kernel). A current desktop Chromium run headless as its own process, driven over
+  DevTools behind an `android.webkit.WebView` shim, needs the same Java shim but no Android native stack;
+  the earlier `experiment/bundled-chromium` branch measured Alpine's Chromium 156 at about 375 MB.
+
 ## Workarounds for users now
 
 - **CineVood:** use the plugin's other provider, CineVood Mirror (`one.1cinevood.beer`). Its title
