@@ -77,6 +77,19 @@ Conclusions:
   against framework internals, with rendering and networking still untested.
 - The TV kernel's Binder support is still unchecked (SSH was unavailable on 2026-11-19).
 
+## AOSP WebView in our own ART via bionic_translation (stopped 2026-11-19)
+
+Our `dalvikvm` loads JNI libraries with ATL's `bionic_dlopen`, so it can in principle load Android-built
+(bionic) libraries. The path had never been used and needed four workarounds on the host:
+`libc_bio`/`libpthread_bio`/`libstdc++_bio` are not in the runtime dist; `cfg.d` is only read from
+`/usr/share/bionic_translation`; a library is treated as bionic only if its directory is in
+`BIONIC_LD_LIBRARY_PATH`; and `_r_debug_ptr` must be set by the host program (ATL's launcher does, ours
+does not). With those, `libwebviewchromium.so` reached linking; missing were ATL's `libandroid.so.0`,
+`libjnigraphics`, and about 20 symbols (`ALooper_*`, `ANativeWindow_*`, `AndroidBitmap_*`,
+`__register_atfork`, `__*_chk`, `mallinfo`). The next crash was in bionic_translation's gdb bookkeeping
+(`apkenv_notify_gdb_of_libraries`). The Java side (Context, Looper, View, WebViewFactory) was not reached.
+Testing stopped here at the user's request.
+
 ## Workarounds for users now
 
 - **CineVood:** use the plugin's other provider, CineVood Mirror (`one.1cinevood.beer`). Its title
