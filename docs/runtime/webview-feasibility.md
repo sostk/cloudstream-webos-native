@@ -50,6 +50,33 @@ Source: Chromium's public Android arm64 snapshot r1748901 (`chromium-browser-sna
   DevTools behind an `android.webkit.WebView` shim, needs the same Java shim but no Android native stack;
   the earlier `experiment/bundled-chromium` branch measured Alpine's Chromium 156 at about 375 MB.
 
+## AOSP WebView on plain Linux (host test, 2026-11-19)
+
+Setup: Google's AOSP Android 14 arm64 emulator image (`sys-img/android/arm64-v8a-34_r04`), its
+`system`/`product` partitions and all 32 APEXes unpacked, run in an empty arm64 Docker container
+(qemu-user) with no Android kernel features. AOSP 14 ships WebView **113.0.5672.136**
+(`libwebviewchromium.so` 98 MiB arm64, 64 MiB armv7). Harness: `experiments/aosp-webview/` (not committed).
+
+| Step | Result |
+|---|---|
+| Bionic linker + libc on a plain kernel | Works (`toybox`, `linkerconfig` run). |
+| WebView engine's native dependencies | All resolve against AOSP's own `/system/lib64` (libandroid, libbinder, libhwui, libgui, ...). |
+| ART (`dalvikvm64`) + framework boot image | Starts, after a hand-made linker config (`[legacy]` plus APEX namespaces) and a generated system property area (`/dev/__properties__`). |
+| WebView classes from `webview.apk` | Load. |
+| `libwebviewchromium.so` + `JNI_OnLoad` | **Works** (26 ms). |
+| Framework natives (`Looper`, `SystemProperties`) | Missing under `dalvikvm`: only `app_process` registers them. |
+| `app_process64` (how every Android app starts) | Runtime and framework initialise, then **aborts: `Binder driver '/dev/binder' could not be opened`** (`ProcessState::self()` in `AppRuntime::onStarted`). |
+
+Conclusions:
+- The engine itself does not care that it is not on Android; the framework around it does. Android's
+  app start-up opens Binder unconditionally, and `WebViewFactory.getProvider()` then asks the package
+  manager (a Binder service in `system_server`) for the WebView package.
+- So a working AOSP WebView needs Binder in the kernel **and** Android's service manager and package
+  manager running, which means booting a cut-down Android (redroid/Waydroid style). The other route,
+  bypassing `app_process` and the package manager with a native shim and reflection, is open-ended work
+  against framework internals, with rendering and networking still untested.
+- The TV kernel's Binder support is still unchecked (SSH was unavailable on 2026-11-19).
+
 ## Workarounds for users now
 
 - **CineVood:** use the plugin's other provider, CineVood Mirror (`one.1cinevood.beer`). Its title
