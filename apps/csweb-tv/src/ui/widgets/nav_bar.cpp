@@ -25,7 +25,7 @@ void NavBar::set_selected(size_t index) {
 
 void NavBar::draw(Ui &ui) {
     const wnk::Rect f = frame();
-    surface_.draw(ui, f, f.h * 0.5f, glass::panel_style());
+    surface_.draw(ui, f, f.h * 0.5f, glass::panel_style(), 1, {}, glass::scroll_shift(*this));
 }
 
 }  // namespace csweb::ui

@@ -60,6 +60,7 @@ class HomeScreen : public wnk::ui::Screen {
     void rebuild_row(Row &row);
     void pick_hero();
     void show_hero(const runtime::Details &d);
+    void set_banner(bool shown);
     void open_provider_picker(wnk::ui::Ui &ui);
     enum class StateAction { None, Extensions, ChooseSource };
     void set_state_text(const std::string &text, StateAction action);
@@ -75,6 +76,7 @@ class HomeScreen : public wnk::ui::Screen {
     bool hero_set_ = false;
     mutable std::mt19937 rng_{std::random_device{}()};
 
+    wnk::ui::View *banner_ = nullptr;  // the featured title: artwork with hero_ over it
     Backdrop *backdrop_ = nullptr;
     TopBar *top_ = nullptr;
     bool shown_ = false;

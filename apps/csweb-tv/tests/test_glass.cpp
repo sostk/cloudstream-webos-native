@@ -84,3 +84,27 @@ TEST("a smaller texture covers the whole panel") {
     CHECK_EQ(at(px, w, w / 2, 50)[3], 255);
     CHECK_EQ(at(px, w, 0, 0)[3], 0);  // rounded corner
 }
+
+namespace {
+struct Scrolled : wnk::ui::View {
+    wnk::Point by;
+    wnk::Point scroll_offset() const override { return by; }
+};
+}  // namespace
+
+TEST("scroll_shift: the scroll offsets of every view above, not the view's own") {
+    Scrolled outer;
+    outer.by = {0, 300};
+    auto &mid = outer.add<Scrolled>();
+    mid.by = {0, 0};
+    auto &in = mid.add_child(std::make_unique<Scrolled>());
+    static_cast<Scrolled &>(in).by = {40, 0};  // its own offset moves its children, not itself
+    auto &leaf = in.add<wnk::ui::View>();
+    const wnk::Point s = glass::scroll_shift(leaf);
+    CHECK_EQ(s.x, -40.0f);
+    CHECK_EQ(s.y, -300.0f);
+    const wnk::Point own = glass::scroll_shift(in);
+    CHECK_EQ(own.x, 0.0f);
+    CHECK_EQ(own.y, -300.0f);
+    CHECK_EQ(glass::scroll_shift(outer).y, 0.0f);
+}

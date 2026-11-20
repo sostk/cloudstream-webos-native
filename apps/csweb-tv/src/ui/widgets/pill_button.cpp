@@ -101,7 +101,7 @@ void PillButton::draw(Ui &ui) {
     } else if (focused) {
         r.fill_rect(f, ui.fade(theme::kFocusFill), radius);
     } else if (style_ == Style::Glass && frosted_) {
-        surface_.draw(ui, f, radius, glass::chip_style());
+        surface_.draw(ui, f, radius, glass::chip_style(), 1, {}, glass::scroll_shift(*this));
     } else if (style_ == Style::Glass) {
         r.fill_rect(f, ui.fade(theme::kGlassBorder), radius);
         r.fill_rect({f.x + 1, f.y + 1, f.w - 2, f.h - 2}, ui.fade(theme::Color::hex(0x1E2129FF)), radius - 1);

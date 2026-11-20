@@ -49,7 +49,9 @@ void Backdrop::draw_over(Ui &ui) {
     const float h = f.h * bottom_extent;
     draw_ramp(ui, {f.x, f.y + f.h - h, f.w, h}, theme::kBackground, 0.0f, fade_to_background ? 1.0f : 0.8f, false);
     if (image_->visible() && image_->state() == ImageView::State::Ready && blur_.image()) {
-        glass::publish(ui, {blur_.image(), f, left_strength, left_extent, bottom_extent, fade_to_background});
+        const wnk::Point at = glass::scroll_shift(*this);
+        glass::publish(ui, {blur_.image(), {f.x + at.x, f.y + at.y, f.w, f.h}, left_strength, left_extent, bottom_extent,
+                            fade_to_background});
     }
 }
 

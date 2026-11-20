@@ -31,21 +31,35 @@ namespace {
 constexpr const char *kCat = "csweb";
 const wnk::Size kPosterCell{theme::kPosterW, theme::kPosterH + 56};
 const wnk::Size kStillCell{theme::kStillW, theme::kStillH + 56};
+constexpr float kBannerH = 760;   // the featured banner, under the top bar
+constexpr float kTopClear = 200;  // the top bar's height plus a gap, when there is no banner
 }  // namespace
 
 HomeScreen::HomeScreen(app::Services &s) : Screen("Home"), s_(s) {
     name = "home";
-    backdrop_ = &add<Backdrop>();
-    backdrop_->set_width(Dim::fill()).set_height(Dim::fixed(840));
-    backdrop_->set_align(Align::Stretch, Align::Start);
-
     auto &scroll = add<ScrollView>();
     scroll.margin = 160;
-    content_ = &scroll.add<Column>(28);
-    content_->set_padding({theme::kSafeX, 300, theme::kSafeX, 80});
+    auto &page = scroll.add<Column>(0);
+    page.set_width(Dim::fill());
 
-    hero_ = &content_->add<Column>(18);
-    hero_->set_width(Dim::fixed(880));
+    // CloudStream's TV home: the featured title is a banner at the top of the scrolling list
+    // (home_preview_info_btt), not a background behind every row; it scrolls away with the page.
+    banner_ = &page.add<View>();
+    banner_->set_width(Dim::fill()).set_height(Dim::fixed(kBannerH));
+    banner_->set_visible(false);
+    backdrop_ = &banner_->add<Backdrop>();
+    backdrop_->set_width(Dim::fill()).set_height(Dim::fill());
+    backdrop_->bottom_extent = 0.45f;
+    hero_ = &banner_->add<Column>(18);
+    hero_->set_width(Dim::fixed(880 + theme::kSafeX)).set_height(Dim::fill());
+    hero_->set_padding({theme::kSafeX, 0, 0, 56});
+    hero_->set_align(Align::Start, Align::End);
+    hero_->set_justify(Align::End);
+
+    content_ = &page.add<Column>(28);
+    content_->set_width(Dim::fill());
+    content_->set_padding({theme::kSafeX, kTopClear, theme::kSafeX, 80});
+
     hero_kicker_ = &hero_->add<Label>("", TextRole::Small);
     hero_kicker_->set_bold(true).set_color(theme::kAccent).set_font_size(theme::kCaption);
     hero_title_ = &hero_->add<Label>("", TextRole::Title);
@@ -63,7 +77,6 @@ HomeScreen::HomeScreen(app::Services &s) : Screen("Home"), s_(s) {
     hero_info_ = &buttons.add<PillButton>("", "refresh", PillButton::Style::Glass, [this](Ui &) { pick_hero(); }, 72);
     hero_info_->accessible_label = "Another pick";
     hero_info_->set_frosted(true);
-    hero_->set_visible(false);
 
     state_ = &content_->add<Column>(24);
     state_text_ = &state_->add<Label>("Loading plugins…", TextRole::Title);
@@ -81,7 +94,7 @@ HomeScreen::HomeScreen(app::Services &s) : Screen("Home"), s_(s) {
                                                         [this](Ui &ui) {
         // The row goes away with its button: keep focus near it, not on the profile button.
         confirm_clear_watch_history(ui, s_, [this](Ui &u) {
-            u.focus(hero_->visible() ? static_cast<View *>(hero_play_) : static_cast<View *>(top_->current_tab()));
+            u.focus(banner_->visible() ? static_cast<View *>(hero_play_) : static_cast<View *>(top_->current_tab()));
         });
     }, 48);
     clear_resume.name = "home.resume.clear";
@@ -207,7 +220,7 @@ void HomeScreen::load(Ui &ui, const std::string &provider) {
     rows_box_->clear_children();
     hero_seen_.clear();
     hero_set_ = false;
-    hero_->set_visible(false);
+    set_banner(false);
     backdrop_->set_url({});
     provider_ = provider;
     provider_button_->set_text(provider.empty() ? "Source: none" : provider);
@@ -377,8 +390,14 @@ void HomeScreen::pick_hero() {
                         }));
 }
 
+void HomeScreen::set_banner(bool shown) {
+    banner_->set_visible(shown);
+    // Without the banner the first row starts below the top bar.
+    content_->set_padding({theme::kSafeX, shown ? 36.0f : kTopClear, theme::kSafeX, 80});
+}
+
 void HomeScreen::show_hero(const runtime::Details &d) {
-    hero_->set_visible(true);
+    set_banner(true);
     hero_kicker_->set_text("FEATURED · " + provider_);
     hero_title_->set_text(d.name);
     std::string meta;

@@ -227,11 +227,23 @@ Surface::~Surface() {
     if (renderer_ != nullptr && texture_ != wnk::render::kNoTexture) renderer_->destroy_texture(texture_);
 }
 
-void Surface::draw(wnk::ui::Ui &ui, const wnk::Rect &r, float radius, const Style &style, float opacity, wnk::Point shift) {
+wnk::Point scroll_shift(const wnk::ui::View &v) {
+    wnk::Point out;
+    for (const wnk::ui::View *p = v.parent(); p != nullptr; p = p->parent()) {
+        const wnk::Point s = p->scroll_offset();
+        out.x -= s.x;
+        out.y -= s.y;
+    }
+    return out;
+}
+
+void Surface::draw(wnk::ui::Ui &ui, const wnk::Rect &r, float radius, const Style &style, float opacity, wnk::Point shift,
+                   wnk::Point scrolled) {
     auto &rr = ui.renderer();
-    const wnk::Rect q{std::round(r.x), std::round(r.y), std::round(r.w), std::round(r.h)};
-    if (q.w < 2 || q.h < 2 || opacity <= 0) return;
-    const wnk::Rect at{q.x + std::round(shift.x), q.y + std::round(shift.y), q.w, q.h};  // where it is drawn
+    const wnk::Rect d{std::round(r.x), std::round(r.y), std::round(r.w), std::round(r.h)};
+    if (d.w < 2 || d.h < 2 || opacity <= 0) return;
+    const wnk::Rect at{d.x + std::round(shift.x), d.y + std::round(shift.y), d.w, d.h};  // where it is drawn
+    const wnk::Rect q{d.x + std::round(scrolled.x), d.y + std::round(scrolled.y), d.w, d.h};  // matched with the artwork
     const Under *under = nullptr;
     if (g_under_at == ui.now_ms() && g_under.image && g_under.image->width > 0) {
         const wnk::Rect &f = g_under.frame;
@@ -254,11 +266,12 @@ void Surface::draw(wnk::ui::Ui &ui, const wnk::Rect &r, float radius, const Styl
                       std::to_string(style.tint_alpha) + ":" + std::to_string(style.ground_alpha) + ":" +
                       std::to_string(res);
     if (under) {
-        // The artwork under it changes with the position (and the backdrop's frame and scrims).
+        // The artwork under it changes with its position on the artwork (and the backdrop's size and
+        // scrims), not with both moving together.
         const wnk::Rect &f = under->frame;
-        key += ":" + std::to_string(static_cast<int>(q.x)) + "," + std::to_string(static_cast<int>(q.y)) + ":" +
-               std::to_string(static_cast<int>(f.x)) + "," + std::to_string(static_cast<int>(f.y)) + "," +
-               std::to_string(static_cast<int>(f.w)) + "," + std::to_string(static_cast<int>(f.h)) + ":" +
+        key += ":" + std::to_string(static_cast<int>(std::lround(q.x - f.x))) + "," +
+               std::to_string(static_cast<int>(std::lround(q.y - f.y))) + ":" + std::to_string(static_cast<int>(f.w)) + "," +
+               std::to_string(static_cast<int>(f.h)) + ":" +
                std::to_string(under->left_strength) + std::to_string(under->left_extent) + std::to_string(under->bottom_extent);
     }
     if (key != key_ || texture_ == wnk::render::kNoTexture || renderer_ != &rr) {

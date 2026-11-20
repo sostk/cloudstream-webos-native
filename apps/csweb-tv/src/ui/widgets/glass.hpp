@@ -60,6 +60,10 @@ struct Under {
 };
 void publish(wnk::ui::Ui &ui, const Under &under);
 
+// How far the scrolling views above `v` move what it draws: added to a rectangle in its layout
+// coordinates, it gives the one Backdrops and panels are matched in (slides are left out).
+wnk::Point scroll_shift(const wnk::ui::View &v);
+
 // The look of a glass panel.
 struct Style {
     wnk::render::Color tint;  // over the blurred artwork
@@ -84,9 +88,10 @@ class Surface {
     Surface(const Surface &) = delete;
     Surface &operator=(const Surface &) = delete;
     // Draws the panel at `r` (logical units) with corner `radius`, at `opacity` and moved by `shift`.
-    // The artwork under it is that under `r`: a panel sliding in (shift) is not composed again.
+    // The artwork under it is that under `r` moved by `scrolled` (scroll_shift() of the panel's view):
+    // a panel sliding in (shift) is not composed again, nor one scrolling along with its artwork.
     void draw(wnk::ui::Ui &ui, const wnk::Rect &r, float radius, const Style &style, float opacity = 1,
-              wnk::Point shift = {});
+              wnk::Point shift = {}, wnk::Point scrolled = {});
 
  private:
     wnk::render::Renderer *renderer_ = nullptr;
