@@ -8,7 +8,7 @@
 set -euo pipefail
 
 KIT_REPO=https://github.com/Native-Webos/webos-native-app-kit.git
-KIT_COMMIT=8e4f9f7585a96d76f8d1cc3593c88fefc45f228d
+KIT_COMMIT=b8f92755a890f044bec92efd8b5ab592e5e53166
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIR="$ROOT/external/webos-native-app-kit"

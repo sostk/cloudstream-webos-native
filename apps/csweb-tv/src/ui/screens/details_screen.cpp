@@ -80,10 +80,16 @@ DetailsScreen::DetailsScreen(app::Services &s, std::string provider, runtime::Se
     bookmark_->name = "details.bookmark";
     library_sub_ = s_.library->changed.subscribe([this] { refresh_library(); });
 
-    group_row_ = &content_->add<wnk::ui::Row>(14);
-    group_row_->set_focus_scope();
-    range_row_ = &content_->add<wnk::ui::Row>(14);
-    range_row_->set_focus_scope();
+    // Season and episode-range chips scroll sideways with focus when there are more than fit.
+    for (wnk::ui::Row **row : {&group_row_, &range_row_}) {
+        auto &strip = content_->add<ScrollView>(wnk::ui::Axis::Horizontal);
+        strip.set_width(Dim::fill());
+        strip.set_padding({0, 6, 0, 6});  // room for the focused chip's ring
+        strip.margin = 120;               // keep the next chip in sight
+        strip.set_visible(false);         // shown once it has chips
+        *row = &strip.add<wnk::ui::Row>(14);
+        (*row)->set_focus_scope();
+    }
     episodes_ = &content_->add<Column>(10);
     episodes_->set_width(Dim::fixed(1300));
     episodes_->set_focus_scope();
@@ -225,6 +231,7 @@ void DetailsScreen::show(Ui &ui) {
         }
         show_group(group_, 0);
     }
+    group_row_->parent()->set_visible(!group_row_->children().empty());
 
     // ResultFragmentTv: the cast only when show_cast_in_details_key is on (the default).
     const bool show_cast = s_.settings->get_bool(settings::kShowCast, true) && !d.actors.empty();
@@ -277,6 +284,7 @@ void DetailsScreen::show_group(const runtime::EpisodeGroup &g, size_t range) {
             b.name = "details.range." + std::to_string(i);
         }
     }
+    range_row_->parent()->set_visible(!range_row_->children().empty());
     episodes_->clear_children();
     rows_.clear();
     const runtime::EpisodeRange r = range < rs.size() ? rs[range] : runtime::EpisodeRange{0, eps.size(), 0, 0};
