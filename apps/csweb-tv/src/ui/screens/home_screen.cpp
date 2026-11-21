@@ -126,6 +126,7 @@ HomeScreen::HomeScreen(app::Services &s) : Screen("Home"), s_(s) {
     rows_box_ = &content_->add<Column>(26);
 
     top_ = &add<TopBar>(*s_.router, app::Router::Tab::Home);
+    top_->follow(&scroll);
     provider_button_ = &top_->right().add<PillButton>("Source", "chevron-down", PillButton::Style::Glass,
                                                      [this](Ui &ui) { open_provider_picker(ui); }, 60);
     provider_button_->name = "home.provider";

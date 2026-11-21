@@ -27,7 +27,7 @@ Column &tab_page(View &screen, app::Services &s, app::Router::Tab tab, const std
     auto &col = scroll.add<Column>(22);
     col.set_padding({theme::kSafeX, 200, theme::kSafeX, 80});
     col.add<Label>(title, TextRole::Title).set_font_size(theme::kDisplay).set_bold(true);
-    screen.add<TopBar>(*s.router, tab);
+    screen.add<TopBar>(*s.router, tab).follow(&scroll);
     return col;
 }
 

@@ -7,6 +7,7 @@
 #pragma once
 
 #include "app/router.hpp"
+#include "ui/widgets/glass.hpp"
 #include "ui/widgets/nav_bar.hpp"
 
 #include "wnk/ui/widgets.hpp"
@@ -21,6 +22,12 @@ class TopBar : public wnk::ui::Row {
     wnk::ui::Row &right() { return *right_; }
     // The tab of the screen showing this bar (where focus starts on a tab screen).
     wnk::ui::View *current_tab() const { return current_tab_; }
+    // The page scrolling under the bar: once it has scrolled, a strip of glass fades in behind the
+    // bar so the rows passing under it do not show through its labels.
+    void follow(const wnk::ui::View *scroller) { scroller_ = scroller; }
+
+ protected:
+    void draw(wnk::ui::Ui &ui) override;
 
  private:
     void show_profile();
@@ -30,6 +37,8 @@ class TopBar : public wnk::ui::Row {
     wnk::ui::View *current_tab_ = nullptr;
     wnk::ui::Row *right_;
     core::Signal::Subscription profile_sub_;
+    const wnk::ui::View *scroller_ = nullptr;
+    glass::Surface backing_;
 };
 
 }  // namespace csweb::ui

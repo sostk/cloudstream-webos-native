@@ -88,7 +88,7 @@ SearchScreen::SearchScreen(app::Services &s) : Screen("Search"), s_(s) {
     hint_ = &results_->add<Label>("Results from every installed source appear here, grouped by source.");
     hint_->set_muted(true).set_max_lines(2);
 
-    add<TopBar>(*s_.router, app::Router::Tab::Search);
+    add<TopBar>(*s_.router, app::Router::Tab::Search).follow(&scroll);
 }
 
 void SearchScreen::on_show(Ui &ui) {

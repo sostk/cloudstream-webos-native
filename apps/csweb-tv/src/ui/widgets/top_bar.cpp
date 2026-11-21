@@ -5,6 +5,8 @@
 #include "ui/theme/theme.hpp"
 #include "ui/widgets/pill_button.hpp"
 
+#include <algorithm>
+
 namespace csweb::ui {
 
 using namespace wnk::ui;
@@ -50,6 +52,34 @@ TopBar::TopBar(app::Router &router, Tab current) : Row(0), router_(router) {
     right_->set_width(Dim::fill());
     right_->set_justify(Align::End);
     right_->set_align(Align::Stretch, Align::Center);
+}
+
+namespace {
+constexpr float kBackingBelow = 24;  // the strip ends this far below the bar's controls
+constexpr float kBackingFade = 120;  // scrolled this far, the strip is fully shown
+
+glass::Style backing_style() {
+    // The navigation pill's glass, as a full-width strip: no shadow, a soft top edge (it is the
+    // screen's edge), composed at a quarter of the size (1920 wide).
+    glass::Style s = glass::panel_style();
+    s.tint_alpha = 0.62f;
+    s.ground_alpha = 0.9f;
+    s.shadow = false;
+    s.border_top = 0.12f;
+    s.highlight = 0.04f;
+    s.resolution = 0.25f;
+    return s;
+}
+}  // namespace
+
+void TopBar::draw(Ui &ui) {
+    if (scroller_ == nullptr) return;
+    const float shown = std::clamp(scroller_->scroll_offset().y / kBackingFade, 0.0f, 1.0f);
+    if (shown <= 0) return;
+    const wnk::Rect f = frame();
+    // A little wider than the screen so the side borders fall outside it.
+    backing_.draw(ui, {f.x - 2, f.y - 2, f.w + 4, f.h + kBackingBelow + 2}, 0, backing_style(), shown, {},
+                  glass::scroll_shift(*this));
 }
 
 void TopBar::show_profile() {
