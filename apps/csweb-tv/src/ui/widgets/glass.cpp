@@ -177,6 +177,12 @@ std::vector<uint8_t> compose(int w, int h, float radius, const Style &style, con
         const float cy = py + 0.5f;
         const float k_high = style.highlight * std::max(0.0f, 1.0f - cy / (h * 0.5f));
         const float border_a = mixf(style.border_top, style.border_bottom, cy / h);
+        // A soft lower edge: opacity eases to nothing over the last fade_bottom of the height.
+        float fade = 1;
+        if (style.fade_bottom > 0) {
+            const float t = std::clamp((h - cy) / (h * style.fade_bottom), 0.0f, 1.0f);
+            fade = t * t * (3 - 2 * t);
+        }
         for (int px = 0; px < w; px++) {
             const float cx = px + 0.5f;
             // Signed distance to the rounded rectangle (negative inside).
@@ -217,7 +223,7 @@ std::vector<uint8_t> compose(int w, int h, float radius, const Style &style, con
             alpha = alpha + (1.0f - alpha) * b;
             uint8_t *o = &out[(static_cast<size_t>(py) * w + px) * 4];
             for (int i = 0; i < 3; i++) o[i] = static_cast<uint8_t>(std::lround(std::clamp(c[i], 0.0f, 1.0f) * 255));
-            o[3] = static_cast<uint8_t>(std::lround(alpha * m * 255));
+            o[3] = static_cast<uint8_t>(std::lround(alpha * m * fade * 255));
         }
     }
     return out;
@@ -264,7 +270,7 @@ void Surface::draw(wnk::ui::Ui &ui, const wnk::Rect &r, float radius, const Styl
     std::string key = std::to_string(under ? under->image->id : 0) + ":" + std::to_string(static_cast<int>(q.w)) + "x" +
                       std::to_string(static_cast<int>(q.h)) + ":" + std::to_string(static_cast<int>(radius)) + ":" +
                       std::to_string(style.tint_alpha) + ":" + std::to_string(style.ground_alpha) + ":" +
-                      std::to_string(res);
+                      std::to_string(res) + ":" + std::to_string(style.fade_bottom);
     if (under) {
         // The artwork under it changes with its position on the artwork (and the backdrop's size and
         // scrims), not with both moving together.

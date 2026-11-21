@@ -72,6 +72,7 @@ struct Style {
     float border_top = 0.30f, border_bottom = 0.07f;  // white border alpha, top to bottom
     float highlight = 0.07f;      // white at the top edge, fading out by the middle
     bool shadow = true;
+    float fade_bottom = 0;  // fraction of the height at the bottom over which the panel fades out
     // Texture pixels per logical unit. Below 1 (large panels: dialogs) the texture is composed smaller
     // and scaled up, which the blur hides, and the border is drawn sharp over it instead.
     float resolution = 1;

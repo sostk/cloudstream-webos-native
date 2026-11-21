@@ -108,3 +108,16 @@ TEST("scroll_shift: the scroll offsets of every view above, not the view's own")
     CHECK_EQ(own.y, -300.0f);
     CHECK_EQ(glass::scroll_shift(outer).y, 0.0f);
 }
+
+TEST("fade_bottom: a soft lower edge instead of a line") {
+    glass::Style s = glass::panel_style();
+    s.border_top = s.border_bottom = 0;
+    s.fade_bottom = 0.5f;
+    const int w = 40, h = 100;
+    const auto px = glass::compose(w, h, 0, s, nullptr, {0, 0, 40, 100});
+    const int top = at(px, w, 20, 10)[3], upper = at(px, w, 20, 45)[3], mid = at(px, w, 20, 75)[3], low = at(px, w, 20, 99)[3];
+    CHECK(top > 200);         // the upper half keeps the full ground
+    CHECK_EQ(upper, top);
+    CHECK(mid < top && mid > low);  // then it eases out
+    CHECK(low < 5);                 // to nothing at the bottom
+}

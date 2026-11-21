@@ -55,18 +55,19 @@ TopBar::TopBar(app::Router &router, Tab current) : Row(0), router_(router) {
 }
 
 namespace {
-constexpr float kBackingBelow = 24;  // the strip ends this far below the bar's controls
+constexpr float kBackingBelow = 90;  // the strip reaches this far below the bar's controls, fading out
 constexpr float kBackingFade = 120;  // scrolled this far, the strip is fully shown
 
 glass::Style backing_style() {
-    // The navigation pill's glass, as a full-width strip: no shadow, a soft top edge (it is the
-    // screen's edge), composed at a quarter of the size (1920 wide).
+    // The navigation pill's glass, as a full-width strip: no shadow and no border, its lower part
+    // fading out so there is no hard line under the bar; composed at a quarter of the size.
     glass::Style s = glass::panel_style();
     s.tint_alpha = 0.62f;
     s.ground_alpha = 0.9f;
     s.shadow = false;
-    s.border_top = 0.12f;
+    s.border_top = s.border_bottom = 0;
     s.highlight = 0.04f;
+    s.fade_bottom = 0.5f;
     s.resolution = 0.25f;
     return s;
 }
