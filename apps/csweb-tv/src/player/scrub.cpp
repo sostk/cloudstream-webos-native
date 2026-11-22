@@ -5,13 +5,20 @@
 
 namespace csweb::player {
 
+int64_t Scrub::step_us(int press) {
+    if (press <= 4) return 10000000;
+    if (press <= 9) return 30000000;
+    return 60000000;
+}
+
 bool Scrub::step(int direction, int64_t position_us, int64_t duration_us, int64_t now_ms) {
     if (duration_us <= 0 || duration_us == kNone) return false;
     if (!active_) {
         active_ = true;
+        presses_ = 0;
         target_us_ = position_us == kNone ? 0 : position_us;
     }
-    const int64_t increment = duration_us / kIncrementCount;
+    const int64_t increment = step_us(++presses_);
     target_us_ = std::clamp<int64_t>(target_us_ + (direction < 0 ? -increment : increment), 0, duration_us);
     last_ms_ = now_ms;
     return true;

@@ -120,6 +120,8 @@ class PlayerScreen : public wnk::ui::Screen {
     PillButton *pause_ = nullptr;
     wnk::ui::Spinner *spinner_ = nullptr;
     double last_input_ms_ = 0;
+    bool was_playing_ = false;               // the previous frame's state was Playing
+    wnk::ui::Row *buttons_row_ = nullptr;     // the bar's bottom row: Down there hides the bar
 
     // Starter HUD (shown at video start and with controls)
     wnk::ui::Row *starter_hud_ = nullptr;

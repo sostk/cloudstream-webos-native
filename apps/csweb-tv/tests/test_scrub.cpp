@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// player/scrub against Media3 DefaultTimeBar's defaults (a twentieth of the duration per press,
-// the seek a second after the last press).
+// player/scrub: fixed steps that grow while the presses continue (10 s, then 30 s, then 60 s), the
+// seek a second after the last press (Media3 DefaultTimeBar's timing).
 #define WNK_TEST_MAIN
 #include "wnk_test.hpp"
 
@@ -8,20 +8,36 @@
 
 using csweb::player::Scrub;
 
-TEST("each press moves a twentieth of the duration from where the bar stood") {
+TEST("presses move 10 s, then 30 s, then 60 s from where the bar stood") {
     Scrub s;
     const int64_t duration = 8400000000;  // 2:20:00
     CHECK(s.step(+1, 821000000, duration, 0));
-    CHECK_EQ(s.target_us(), 821000000 + 420000000);
+    CHECK_EQ(s.target_us(), 821000000 + 10000000);
     CHECK(s.step(+1, 0, duration, 100));  // the position no longer matters once scrubbing
-    CHECK_EQ(s.target_us(), 821000000 + 840000000);
+    CHECK_EQ(s.target_us(), 821000000 + 20000000);
     CHECK(s.step(-1, 0, duration, 200));
-    CHECK_EQ(s.target_us(), 821000000 + 420000000);
+    CHECK_EQ(s.target_us(), 821000000 + 10000000);
+    s.step(+1, 0, duration, 300);  // 4th press: still 10 s
+    CHECK_EQ(s.target_us(), 821000000 + 20000000);
+    s.step(+1, 0, duration, 400);  // 5th: 30 s
+    CHECK_EQ(s.target_us(), 821000000 + 50000000);
+    for (int i = 6; i <= 9; ++i) s.step(+1, 0, duration, 400 + i * 100);
+    CHECK_EQ(s.target_us(), 821000000 + 170000000);
+    s.step(+1, 0, duration, 1400);  // 10th: 60 s
+    CHECK_EQ(s.target_us(), 821000000 + 230000000);
+}
+
+TEST("a new scrub starts again at 10 s") {
+    Scrub s;
+    for (int i = 0; i < 12; ++i) s.step(+1, 0, 8400000000, i * 100);
+    CHECK(s.finish(5000) != Scrub::kNone);
+    s.step(+1, 1000000000, 8400000000, 6000);
+    CHECK_EQ(s.target_us(), 1010000000);
 }
 
 TEST("the target stays within the media") {
     Scrub s;
-    CHECK(s.step(-1, 3000000, 100000000, 0));  // 3 s back by 5 s
+    CHECK(s.step(-1, 3000000, 100000000, 0));  // 3 s back by 10 s
     CHECK_EQ(s.target_us(), 0);
     CHECK(s.step(+1, 0, 100000000, 0));
     for (int i = 0; i < 30; ++i) s.step(+1, 0, 100000000, 0);
@@ -34,11 +50,11 @@ TEST("the seek comes a second after the last press, or at once on OK") {
     s.step(+1, 0, 100000000, 1500);
     CHECK_EQ(s.finish(2400), Scrub::kNone);  // 0.9 s after the last press
     CHECK(s.active());
-    CHECK_EQ(s.finish(2500), 10000000);
+    CHECK_EQ(s.finish(2500), 20000000);
     CHECK(!s.active());
     CHECK_EQ(s.finish(9000), Scrub::kNone);  // once
     s.step(-1, 50000000, 100000000, 3000);
-    CHECK_EQ(s.finish(3001, /*now=*/true), 45000000);
+    CHECK_EQ(s.finish(3001, /*now=*/true), 40000000);
 }
 
 TEST("nothing to scrub without a duration (live)") {

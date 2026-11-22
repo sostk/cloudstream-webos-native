@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// D-pad scrubbing on the player's time bar, as Media3's DefaultTimeBar does it for CloudStream's
-// LivePreviewTimeBar (CloudStream keeps the bar's defaults): each Left/Right press moves the target a
-// twentieth of the duration from where the bar stands, the shown time follows the target, and the
-// seek happens when the keys have stopped for a second, on OK, or when focus leaves the bar.
+// D-pad scrubbing on the player's time bar: each Left/Right press moves the target from where the bar
+// stands, the shown time follows the target, and the seek happens when the keys have stopped for a
+// second, on OK, or when focus leaves the bar (as Media3's DefaultTimeBar does).
+//
+// The step is a fixed time that grows while the presses continue: 10 s for the first four, 30 s for
+// the next five, then 60 s. Media3's default, a twentieth of the duration, was 4 minutes a press on a
+// film (issue #44).
 #pragma once
 
 #include <cstdint>
@@ -12,7 +15,8 @@ namespace csweb::player {
 
 class Scrub {
  public:
-    static constexpr int kIncrementCount = 20;     // DefaultTimeBar.DEFAULT_INCREMENT_COUNT
+    // Step for the n-th press of one scrub (1-based).
+    static int64_t step_us(int press);
     static constexpr int64_t kStopAfterMs = 1000;  // DefaultTimeBar.STOP_SCRUBBING_TIMEOUT_MS
     static constexpr int64_t kNone = INT64_MIN;    // wnk::media::kNoTime
 
@@ -29,6 +33,7 @@ class Scrub {
     bool active_ = false;
     int64_t target_us_ = 0;
     int64_t last_ms_ = 0;
+    int presses_ = 0;
 };
 
 }  // namespace csweb::player

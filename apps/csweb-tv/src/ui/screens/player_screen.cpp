@@ -28,6 +28,9 @@ using wnk::input::Action;
 using wnk::input::Phase;
 
 namespace {
+
+// The control bar hides this long after the last key press or the start of playback.
+constexpr double kControlsHideMs = 4000;
 constexpr const char *kCat = "csweb";
 
 std::string clock_text(int64_t us) {
@@ -108,6 +111,7 @@ PlayerScreen::PlayerScreen(app::Services &s, app::PlayTarget target)
     source_ = &times.add<Label>("", TextRole::Small);
     source_->set_muted(true);
     auto &buttons = bar_->add<wnk::ui::Row>(16);
+    buttons_row_ = &buttons;
     buttons.set_focus_scope();
     buttons.add<PillButton>("", "replay", PillButton::Style::Glass, [this](Ui &) {
         if (controller_) controller_->seek_relative(-seek_us(false));
@@ -451,6 +455,12 @@ void PlayerScreen::show_controls() {
 bool PlayerScreen::on_action(Ui &ui, const wnk::input::ActionEvent &e) {
     if (!controller_ || e.phase == Phase::Release) return false;
     const bool hidden = bar_->opacity() < 0.5f;
+    // Down on the bar's bottom row hides it at once (issue #44).
+    if (!hidden && e.action == Action::Down && buttons_row_ != nullptr && ui.focused() != nullptr &&
+        buttons_row_->is_ancestor_of(ui.focused())) {
+        last_input_ms_ = ui.now_ms() - kControlsHideMs;
+        return true;
+    }
     show_controls();
     switch (e.action) {
         case Action::PlayPause:
@@ -531,8 +541,15 @@ void PlayerScreen::update(Ui &ui, float dt) {
     progress_->set_times(s.position_us, s.duration_us);
     // While scrubbing the time shows the target (Media3 updates exo_position on every scrub move).
     time_->set_text(clock_text(progress_->shown_position()) + " / " + (live ? std::string("LIVE") : clock_text(s.duration_us)));
-    const bool keep = s.state != PlayState::Playing || ui.top_dialog() != nullptr || progress_->scrubbing();
-    const bool visible = keep || ui.now_ms() - last_input_ms_ < 5000;
+    // The bar stays while paused, ended or failed, over a dialog and while scrubbing. Opening and
+    // seeking do not hold it (the spinner shows those): with slow sources it stayed up for 20 s.
+    // The countdown restarts when playback starts or resumes, not only on a key press (issue #44).
+    const bool playing = s.state == PlayState::Playing;
+    if (playing && !was_playing_) last_input_ms_ = ui.now_ms();
+    was_playing_ = playing;
+    const bool keep = s.state == PlayState::Paused || s.state == PlayState::Ended || s.state == PlayState::Error ||
+                      s.state == PlayState::Stopped || ui.top_dialog() != nullptr || progress_->scrubbing();
+    const bool visible = keep || ui.now_ms() - last_input_ms_ < kControlsHideMs;
     progress_->set_active(visible);
     bar_->set_opacity(visible ? 1.0f : 0.0f);
     subs_view_->set_bottom_margin(visible ? 0.34f : 0.07f);
