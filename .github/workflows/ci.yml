@@ -175,6 +175,15 @@ jobs:
           tar -C runtime/dist -xf runtime-aarch64.tar
           test -f runtime/dist/runtime-aarch64/lib/ld-musl-aarch64.so.1
 
+      - name: Cache TorrServer
+        uses: actions/cache@v4
+        with:
+          path: build/torrserver
+          key: torrserver-${{ hashFiles('tools/build-torrserver.sh') }}
+
+      - name: Build TorrServer (torrent and magnet links)
+        run: test -f build/torrserver/torrserver-arm64 || tools/retry-transient.sh tools/build-torrserver.sh
+
       - name: Cache the bundled FFmpeg
         uses: actions/cache@v4
         with:
@@ -343,6 +352,15 @@ jobs:
           tar -C runtime/dist -xf runtime-armv7.tar
           test -f runtime/dist/runtime-armv7/lib/ld-musl-armhf.so.1
           test -f runtime/dist/runtime-armv7/trust/ca-bundle.pem
+
+      - name: Cache TorrServer
+        uses: actions/cache@v4
+        with:
+          path: build/torrserver
+          key: torrserver-${{ hashFiles('tools/build-torrserver.sh') }}
+
+      - name: Build TorrServer (torrent and magnet links)
+        run: test -f build/torrserver/torrserver-arm64 || tools/retry-transient.sh tools/build-torrserver.sh
 
       - name: Cache the bundled FFmpeg
         uses: actions/cache@v4
