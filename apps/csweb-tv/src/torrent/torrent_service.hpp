@@ -32,14 +32,19 @@ struct TorrentFile {
 struct Progress {
     std::string state;  // TorrServer's stat_string ("Torrent getting info", "Torrent working", ...)
     int active_peers = 0, total_peers = 0;
+    int seeders = 0;  // connected peers that have the whole torrent
     double download_bps = 0;
 };
+
+// The line the player's control bar shows while a torrent plays: "12 seeds · 10 of 510 peers · 2.3 MB/s".
+std::string status_text(const Progress &p);
 
 struct Resolved {
     bool ok = false;
     std::string error;
     std::string url;   // http://127.0.0.1:<port>/stream/<name>?link=<hash>&index=<n>&play
     std::string file;  // the chosen file's path in the torrent
+    std::string hash;  // the torrent's info hash (for status())
 };
 
 // ---- Pure helpers (tests/test_torrent.cpp) ----
@@ -71,6 +76,11 @@ class TorrentService {
     // Callbacks run on the main thread and only while `owner` is alive. Cancel with `token`.
     void resolve(const std::string &link, wnk::async::CancellationToken token, wnk::async::Lifetime::Weak owner,
                  ProgressFn on_progress, DoneFn on_done, int timeout_ms = 60000);
+
+    // The torrent's current peers, seeds and speed (TorrServer "get"), for the control bar.
+    // `on_done(ok, progress)` runs on the main thread while `owner` is alive.
+    void status(const std::string &hash, wnk::async::Lifetime::Weak owner,
+                std::function<void(bool, const Progress &)> on_done);
 
     void stop();
 

@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <cstdio>
 #include <random>
 #include <thread>
 
@@ -138,6 +139,7 @@ bool parse_status(const std::string &json, std::string *hash, std::vector<Torren
         progress->state = j.value("stat_string", std::string());
         progress->active_peers = j.value("active_peers", 0);
         progress->total_peers = j.value("total_peers", 0);
+        progress->seeders = j.value("connected_seeders", 0);
         progress->download_bps = j.value("download_speed", 0.0);
     }
     if (files) {
@@ -155,6 +157,26 @@ bool parse_status(const std::string &json, std::string *hash, std::vector<Torren
         }
     }
     return true;
+}
+
+std::string status_text(const Progress &p) {
+    std::string text;
+    if (p.total_peers == 0 && p.active_peers == 0) {
+        text = "Looking for peers";
+    } else {
+        text = std::to_string(p.seeders) + (p.seeders == 1 ? " seed" : " seeds") + " · " + std::to_string(p.active_peers) +
+               " of " + std::to_string(p.total_peers) + " peers";
+    }
+    if (p.download_bps >= 1024) {
+        char speed[32];
+        if (p.download_bps >= 1024.0 * 1024.0) {
+            std::snprintf(speed, sizeof speed, " · %.1f MB/s", p.download_bps / (1024.0 * 1024.0));
+        } else {
+            std::snprintf(speed, sizeof speed, " · %.0f KB/s", p.download_bps / 1024.0);
+        }
+        text += speed;
+    }
+    return text;
 }
 
 TorrentService::TorrentService(std::string binary, std::string work_dir, std::shared_ptr<wnk::net::HttpTransport> transport,
@@ -307,6 +329,7 @@ void TorrentService::resolve(const std::string &link, wnk::async::CancellationTo
             port = port_;
         }
         r.ok = true;
+        r.hash = hash;
         r.url = stream_url(port, hash, *file);
         r.file = file->path;
         WNK_LOGI(kCat, "torrent: streaming file %d of %zu (%lld MB)", file->id, files.size(),
@@ -317,6 +340,32 @@ void TorrentService::resolve(const std::string &link, wnk::async::CancellationTo
         Resolved r;
         r.error = "busy";
         finish(std::move(r));
+    }
+}
+
+void TorrentService::status(const std::string &hash, wnk::async::Lifetime::Weak owner,
+                            std::function<void(bool, const Progress &)> on_done) {
+    const bool queued = pool_.submit([this, hash, owner, on_done](const wnk::async::CancellationToken &t) {
+        Progress p;
+        bool ok = false;
+        bool running;
+        {
+            std::lock_guard<std::mutex> lock(mu_);
+            running = child_ && child_->running() && port_ > 0;
+        }
+        if (running) {
+            std::string err;
+            const std::string st = api("/torrents", nlohmann::json({{"action", "get"}, {"hash", hash}}).dump(), t, &err);
+            ok = !st.empty() && parse_status(st, nullptr, nullptr, &p);
+        }
+        dispatcher_.post([owner, on_done, ok, p]() {
+            if (owner.alive() && on_done) on_done(ok, p);
+        });
+    });
+    if (!queued) {
+        dispatcher_.post([owner, on_done]() {
+            if (owner.alive() && on_done) on_done(false, Progress{});
+        });
     }
 }
 

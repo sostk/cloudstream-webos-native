@@ -108,6 +108,9 @@ PlayerScreen::PlayerScreen(app::Services &s, app::PlayTarget target)
     auto &times = bar_->add<wnk::ui::Row>(24);
     time_ = &times.add<Label>("--:-- / --:--");
     time_->set_width(Dim::fill());
+    torrent_info_ = &times.add<Label>("", TextRole::Small);
+    torrent_info_->set_color(theme::kTextSecondary);
+    torrent_info_->set_visible(false);
     source_ = &times.add<Label>("", TextRole::Small);
     source_->set_muted(true);
     auto &buttons = bar_->add<wnk::ui::Row>(16);
@@ -315,15 +318,7 @@ void PlayerScreen::begin_torrent(Ui &ui, size_t index) {
         link.url, torrent_cancel_.token(), life_.weak(),
         [this, index](const torrent::Progress &p) {
             if (current_ != index) return;
-            std::string text = "Starting the torrent… ";
-            text += p.total_peers > 0 ? std::to_string(p.active_peers) + " of " + std::to_string(p.total_peers) + " peers"
-                                      : std::string("looking for peers");
-            if (p.download_bps > 1024) {
-                char speed[32];
-                std::snprintf(speed, sizeof speed, " · %.1f MB/s", p.download_bps / (1024.0 * 1024.0));
-                text += speed;
-            }
-            loading_text_->set_text(text);
+            loading_text_->set_text("Starting the torrent… " + torrent::status_text(p));
         },
         [this, index](const torrent::Resolved &r) {
             Ui *u = this->ui();
@@ -342,10 +337,14 @@ void PlayerScreen::begin_torrent(Ui &ui, size_t index) {
             local.referer.clear();
             local.headers.clear();
             start_link(*u, local);
+            torrent_hash_ = r.hash;  // after start_link, which clears it for other links
+            torrent_polled_ms_ = 0;
         });
 }
 
 void PlayerScreen::start_link(Ui &ui, const runtime::Link &link) {
+    torrent_hash_.clear();
+    torrent_info_->set_visible(false);
     WNK_LOGI(kCat, "playing link %zu: %s %s (%s)", current_, link.name.c_str(), runtime::quality_label(link.quality).c_str(),
              player::is_adaptive(link) ? "adaptive" : "ffmpeg");
     tracks_.clear();
@@ -404,6 +403,21 @@ void PlayerScreen::start_link(Ui &ui, const runtime::Link &link) {
     controller_->set_video_area({0, 0, 1920, 1080});
     controller_->open(link.url);
     show_controls();
+}
+
+void PlayerScreen::poll_torrent(Ui &ui) {
+    // Every 2 s while the bar is up (CloudStream shows the torrent's state on its player too).
+    if (torrent_hash_.empty() || !s_.torrent || torrent_polling_ || !bar_->visible()) return;
+    if (torrent_polled_ms_ != 0 && ui.now_ms() - torrent_polled_ms_ < 2000) return;
+    torrent_polled_ms_ = ui.now_ms();
+    torrent_polling_ = true;
+    const std::string hash = torrent_hash_;
+    s_.torrent->status(hash, life_.weak(), [this, hash](bool ok, const torrent::Progress &p) {
+        torrent_polling_ = false;
+        if (hash != torrent_hash_) return;
+        torrent_info_->set_text(ok ? torrent::status_text(p) + "   " : std::string());
+        torrent_info_->set_visible(ok);
+    });
 }
 
 void PlayerScreen::next_mirror(Ui &ui) {
@@ -591,6 +605,7 @@ void PlayerScreen::update(Ui &ui, float dt) {
         screen_on_.release();
     }
     spinner_->set_visible(busy);
+    poll_torrent(ui);
     status_->set_text(s.state == PlayState::Playing ? "" : play_state_name(s.state));
     pause_->set_icon(s.state == PlayState::Paused ? "play" : "pause");
     const bool live = s.duration_us == kNoTime && (s.info.container == "dash" || s.info.container == "hls");

@@ -60,3 +60,20 @@ TEST("TorrServer's status JSON") {
     CHECK_EQ(p.state, std::string("Torrent working"));
     CHECK(!parse_status("not json", &hash, &files, &p));
 }
+
+TEST("the control bar's torrent line: seeds, peers, speed") {
+    Progress p;
+    CHECK_EQ(status_text(p), std::string("Looking for peers"));
+    p.seeders = 12;
+    p.active_peers = 10;
+    p.total_peers = 510;
+    p.download_bps = 2.5 * 1024 * 1024;
+    CHECK_EQ(status_text(p), std::string("12 seeds · 10 of 510 peers · 2.5 MB/s"));
+    p.seeders = 1;
+    p.download_bps = 300 * 1024;
+    CHECK_EQ(status_text(p), std::string("1 seed · 10 of 510 peers · 300 KB/s"));
+    const std::string json = R"({"hash":"h","connected_seeders":7,"active_peers":9,"total_peers":40})";
+    Progress q;
+    CHECK(parse_status(json, nullptr, nullptr, &q));
+    CHECK_EQ(q.seeders, 7);
+}
