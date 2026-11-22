@@ -2,6 +2,7 @@
 #include "app/application.hpp"
 
 #include "app/deep_link.hpp"
+#include "core/core_dumps.hpp"
 #include "player/link_priority.hpp"
 #include "runtime/network_settings.hpp"
 #include "runtime/runtime_launcher.hpp"
@@ -64,6 +65,15 @@ void Application::on_start(wnk::app::Context &ctx) {
     log_legacy_curl_diagnostics();
 #endif
     const std::string app_dir = ctx.launch().app_dir;
+    // Issue #36: a crash used to leave a ~40 MB core.<pid> in the install folder, every time.
+    core::disable_core_dumps();
+    {
+        uint64_t bytes = 0;
+        if (const int n = core::remove_core_dumps(app_dir, &bytes)) {
+            WNK_LOGI("csweb", "storage: removed %d old crash dump%s (%llu MB)", n, n == 1 ? "" : "s",
+                     static_cast<unsigned long long>(bytes >> 20));
+        }
+    }
     std::string tmp = ctx.runtime_dir();
     if (tmp.empty()) tmp = CSWEB_TMP_FALLBACK;
     make_dir(tmp);
