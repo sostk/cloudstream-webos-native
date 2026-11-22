@@ -123,6 +123,10 @@ void ProxyPool::acquire(const std::string &country, wnk::async::CancellationToke
         req.timeout_ms = 20000;
         const wnk::net::HttpResponse res = transport_->perform(req, t);
         if (t.cancelled()) return;
+        if (res.error == wnk::net::NetError::None && res.status == 404) {  // ProxyScrape: an empty country
+            done({}, "the list has no proxies for this country at the moment");
+            return;
+        }
         if (!res.ok()) {
             done({}, "the proxy list could not be loaded (" +
                          (res.status ? "HTTP " + std::to_string(res.status) : std::string(wnk::net::error_name(res.error))) + ")");

@@ -54,13 +54,28 @@ int seek_index(long long seconds) {
 }
 constexpr int kSubtitleSizes[] = {75, 100, 125, 150, 175, 200};
 
-// Proxy countries (ProxyScrape's per-country lists).
+// Proxy countries: every country ProxyScrape's free list had proxies for on 2026-11-23 (its
+// proxies/countries/<code>/ files), by name. A country that has none at the moment reports that.
 struct ProxyCountry {
     const char *name, *code;
 };
 constexpr ProxyCountry kProxyCountries[] = {
-    {"India", "in"}, {"United States", "us"}, {"United Kingdom", "gb"}, {"Germany", "de"}, {"France", "fr"},
-    {"Japan", "jp"}, {"Brazil", "br"}, {"Indonesia", "id"}, {"Singapore", "sg"}, {"Canada", "ca"},
+    {"Albania", "al"}, {"Argentina", "ar"}, {"Australia", "au"}, {"Austria", "at"}, {"Bangladesh", "bd"},
+    {"Belgium", "be"}, {"Benin", "bj"}, {"Bolivia", "bo"}, {"Brazil", "br"}, {"Bulgaria", "bg"}, {"Cambodia", "kh"},
+    {"Cameroon", "cm"}, {"Canada", "ca"}, {"Chile", "cl"}, {"China", "cn"}, {"Colombia", "co"}, {"Cyprus", "cy"},
+    {"Czechia", "cz"}, {"Denmark", "dk"}, {"Dominican Republic", "do"}, {"Ecuador", "ec"}, {"Egypt", "eg"},
+    {"Finland", "fi"}, {"France", "fr"}, {"Georgia", "ge"}, {"Germany", "de"}, {"Greece", "gr"}, {"Guatemala", "gt"},
+    {"Honduras", "hn"}, {"Hong Kong", "hk"}, {"Hungary", "hu"}, {"India", "in"}, {"Indonesia", "id"}, {"Iran", "ir"},
+    {"Iraq", "iq"}, {"Italy", "it"}, {"Japan", "jp"}, {"Kazakhstan", "kz"}, {"Kenya", "ke"}, {"Kyrgyzstan", "kg"},
+    {"Latvia", "lv"}, {"Lebanon", "lb"}, {"Libya", "ly"}, {"Lithuania", "lt"}, {"Malawi", "mw"}, {"Malaysia", "my"},
+    {"Mexico", "mx"}, {"Mongolia", "mn"}, {"Nepal", "np"}, {"Nigeria", "ng"}, {"Pakistan", "pk"},
+    {"Palestine", "ps"}, {"Panama", "pa"}, {"Paraguay", "py"}, {"Peru", "pe"}, {"Philippines", "ph"},
+    {"Poland", "pl"}, {"Puerto Rico", "pr"}, {"Qatar", "qa"}, {"Romania", "ro"}, {"Russia", "ru"},
+    {"Saudi Arabia", "sa"}, {"Serbia", "rs"}, {"Seychelles", "sc"}, {"Singapore", "sg"}, {"South Africa", "za"},
+    {"South Korea", "kr"}, {"Spain", "es"}, {"Sweden", "se"}, {"Switzerland", "ch"}, {"Syria", "sy"},
+    {"Taiwan", "tw"}, {"Thailand", "th"}, {"The Netherlands", "nl"}, {"Turkey", "tr"}, {"Ukraine", "ua"},
+    {"United Arab Emirates", "ae"}, {"United Kingdom", "gb"}, {"United States", "us"}, {"Uruguay", "uy"},
+    {"Uzbekistan", "uz"}, {"Venezuela", "ve"}, {"Vietnam", "vn"},
 };
 }  // namespace
 
