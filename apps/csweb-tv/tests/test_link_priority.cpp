@@ -123,6 +123,14 @@ TEST("drm_links") {
     REQUIRE(keys.size() == 1);
     CHECK_EQ(keys.begin()->first, std::string("feedf00deedeadbeeff0baadf00dd00d"));
     CHECK_EQ(keys.begin()->second, std::string("00112233445566778899aabbccddeeff"));
+    // Several keys packed into `key` the way CS3IPlayer's JSON template lets plugins do (JioTV+):
+    // k0","kid":"kid0"},{"kty":"oct","k":"k1 with kid = kid1.
+    ck.drm->key = "ABEiM0RVZneImaq7zN3u_w\",\"kid\":\"_u3wDe7erb7v8Lqt8A3QDQ\"},{\"kty\":\"oct\",\"k\":\"7u7u7u7u7u7u7u7u7u7u7g";
+    ck.drm->kid = "ESIzRFVmd4iZqrvM3e7_AA";
+    const auto packed = clearkey_keys(ck);
+    REQUIRE(packed.size() == 2);
+    CHECK_EQ(packed.at("feedf00deedeadbeeff0baadf00dd00d"), std::string("00112233445566778899aabbccddeeff"));
+    CHECK_EQ(packed.at("112233445566778899aabbccddeeff00"), std::string("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"));
     ck.drm->key = "not a key";
     CHECK(clearkey_keys(ck).empty());
     Link wv = link("wv", 1080, "DASH", "https://h/m.mpd");

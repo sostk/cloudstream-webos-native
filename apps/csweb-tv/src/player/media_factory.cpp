@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "player/media_factory.hpp"
 
+#include <cctype>
+
 #include "player/link_priority.hpp"
 #include "player/merged_source.hpp"
 #include "player/sniffing_source.hpp"
@@ -45,17 +47,49 @@ bool is_adaptive(const runtime::Link &link) {
     return link.link_type == "M3U8" || link.link_type == "DASH" || AdaptiveSource::handles(link.url);
 }
 
+namespace {
+// The form of a key field for the log, never its value: "len=22 hex=0 b64url=1 sep=','x1".
+std::string key_shape(const std::string &v) {
+    int hex = 0, alnum = 0, other = 0;
+    std::string seps;
+    for (unsigned char c : v) {
+        if (std::isxdigit(c)) hex++;
+        if (std::isalnum(c)) alnum++;
+        else if (c != '-' && c != '_') {
+            other++;
+            if (seps.find(static_cast<char>(c)) == std::string::npos && seps.size() < 8) seps += static_cast<char>(c);
+        }
+    }
+    return "len=" + std::to_string(v.size()) + " hexdigits=" + std::to_string(hex) + " alnum=" + std::to_string(alnum) +
+           " other=" + std::to_string(other) + (seps.empty() ? "" : " [" + seps + "]");
+}
+}  // namespace
+
 ContentKeys clearkey_keys(const runtime::Link &link) {
     // CS3IPlayer: {"keys":[{"kty":..,"k":key,"kid":kid}]} for ExoPlayer's ClearKey session; the kit
     // takes the same JWK values (or hex).
     ContentKeys keys;
     if (!link.drm || !link.drm->clearkey() || link.drm->kid.empty() || link.drm->key.empty()) return keys;
     const std::string kid = normalize_key_id(link.drm->kid), key = normalize_key_id(link.drm->key);
-    if (kid.empty() || key.empty()) {
-        WNK_LOGW("csweb", "ClearKey link with a malformed key id or key");
+    if (!kid.empty() && !key.empty()) {
+        keys[kid] = key;
         return keys;
     }
-    keys[kid] = key;
+    // CS3IPlayer pastes kty, key and kid into its ClearKey JSON as text, and plugins rely on it: a
+    // `key` of `k0","kid":"kid0"},{"kty":"oct","k":"k1` carries several keys (JioTV+'s
+    // packClearKeyPairs). The same JSON, read as a key set, gives them all.
+    const std::string kty = link.drm->kty.empty() ? std::string("oct") : link.drm->kty;
+    const std::string jwk = "{\"keys\":[{\"kty\":\"" + kty + "\",\"k\":\"" + link.drm->key + "\",\"kid\":\"" +
+                            link.drm->kid + "\"}],\"type\":\"temporary\"}";
+    std::string error;
+    ContentKeys packed;
+    if (parse_content_keys(jwk, &packed, &error) && !packed.empty()) {
+        WNK_LOGI("csweb", "ClearKey: %zu keys from the link", packed.size());
+        return packed;
+    }
+    WNK_LOGW("csweb", "ClearKey link with a malformed key id or key (kid %s; key %s; licence url %s): %s",
+             key_shape(link.drm->kid).c_str(), key_shape(link.drm->key).c_str(),
+             link.drm->license_url.empty() ? "none" : "set", error.c_str());
     return keys;
 }
 
