@@ -114,6 +114,17 @@ HomeScreen::HomeScreen(app::Services &s) : Screen("Home"), s_(s) {
         item.year = r.show.year;
         s_.router->open_details(ui, r.show.provider, item, true);
     };
+    because_title_ = &content_->add<Label>("");
+    because_title_->set_bold(true).set_font_size(theme::kHeadline);
+    because_title_->set_visible(false);
+    because_rail_ = &content_->add<CollectionView>(Axis::Horizontal, 1, kPosterCell, 28);
+    because_rail_->set_width(Dim::fill());
+    because_rail_->set_height(Dim::fixed(kPosterCell.h + 40));
+    because_rail_->set_visible(false);
+    because_rail_->name = "home.because";
+    because_rail_->on_activate = [this](Ui &ui, size_t i) {
+        if (i < because_items_.size()) s_.router->open_details(ui, because_provider_, because_items_[i]);
+    };
     library_sub_ = s_.library->changed.subscribe([this] { rebuild_resume(); });
     profile_sub_ = s_.profile_changed.subscribe([this] {
         Ui *u = this->ui();
@@ -148,8 +159,49 @@ void HomeScreen::on_show(Ui &ui) {
     refresh(ui);
 }
 
+void HomeScreen::update_because() {
+    if (resume_.empty()) {
+        because_key_.clear();
+        because_items_.clear();
+        because_title_->set_visible(false);
+        because_rail_->set_visible(false);
+        return;
+    }
+    const library::Show show = resume_.front().show;
+    const std::string key = show.provider + "\n" + show.url;
+    if (key == because_key_ || because_loading_) return;
+    if (s_.runtime->state() != runtime::RuntimeClient::State::Ready || !s_.plugins->provider(show.provider)) return;
+    because_loading_ = true;
+    auto details = std::make_shared<runtime::Details>();
+    s_.runtime->request({{"op", "details"}, {"provider", show.provider}, {"url", show.url}},
+                        [details](const nlohmann::json &e) {
+                            if (e.value("event", "") == "details") *details = runtime::parse_details(e);
+                        },
+                        core::guarded(life_.weak(), [this, show, key, details](bool ok, const std::string &) {
+                            because_loading_ = false;
+                            because_key_ = key;  // not asked again for this show, even when it failed
+                            because_items_ = ok ? details->recommendations : std::vector<runtime::SearchResult>{};
+                            because_provider_ = show.provider;
+                            const bool any = !because_items_.empty();
+                            WNK_LOGI(kCat, "home: %zu recommendations after %s", because_items_.size(), show.name.c_str());
+                            because_title_->set_text("Because you watched " + show.name);
+                            because_title_->set_visible(any);
+                            because_rail_->set_visible(any);
+                            because_rail_->set_items(because_items_.size(), [this](Ui &, size_t i) {
+                                const auto &it = because_items_[i];
+                                auto card = std::make_unique<Card>(it.name, it.poster_url,
+                                                                   it.year > 0 ? std::to_string(it.year) : std::string());
+                                card->image_aspect = 1.5f;
+                                return card;
+                            });
+                            // The most recent show may have changed while this loaded.
+                            update_because();
+                        }));
+}
+
 void HomeScreen::rebuild_resume() {
     resume_ = s_.library->get().resume_list();
+    update_because();
     resume_title_->set_visible(!resume_.empty());
     resume_rail_->set_visible(!resume_.empty());
     resume_rail_->set_items(resume_.size(), [this](Ui &, size_t i) {
@@ -195,6 +247,7 @@ void HomeScreen::set_state_text(const std::string &text, StateAction action) {
 }
 
 void HomeScreen::refresh(Ui &ui) {
+    update_because();  // the runtime or the show's plugin may have become ready
     if (s_.runtime->state() == runtime::RuntimeClient::State::Failed) {
         set_state_text("The plugin runtime could not start: " + s_.runtime->last_error(), StateAction::None);
         provider_button_->set_text("Source");

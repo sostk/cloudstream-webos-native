@@ -66,6 +66,9 @@ class HomeScreen : public wnk::ui::Screen {
     void set_state_text(const std::string &text, StateAction action);
     void cancel_requests();
     void rebuild_resume();
+    // "Because you watched …" (issue #37): the most recent Continue watching show's recommendations
+    // (its LoadResponse.recommendations, from its own provider), loaded once per show.
+    void update_because();
 
     app::Services &s_;
     std::string provider_;  // shown provider name ("" when none)
@@ -96,6 +99,11 @@ class HomeScreen : public wnk::ui::Screen {
     wnk::ui::Column *rows_box_ = nullptr;
     wnk::ui::Row *resume_title_ = nullptr;  // the title and CloudStream's Clear history button
     wnk::ui::CollectionView *resume_rail_ = nullptr;
+    wnk::ui::Label *because_title_ = nullptr;
+    wnk::ui::CollectionView *because_rail_ = nullptr;
+    std::vector<runtime::SearchResult> because_items_;
+    std::string because_provider_, because_key_;  // the show they came from (provider + url)
+    bool because_loading_ = false;
     std::vector<library::Resume> resume_;
     core::Signal::Subscription library_sub_;
     core::Signal::Subscription profile_sub_;  // another profile: its home source
