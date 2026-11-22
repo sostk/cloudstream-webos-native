@@ -2,15 +2,19 @@
 #include "ui/screens/settings_screen.hpp"
 
 #include "runtime/network_settings.hpp"
+#include "net/proxy_pool.hpp"
 #include "settings/preferences.hpp"
+#include "settings/proxy_rules.hpp"
 #include "ui/dialogs/clear_watch_history.hpp"
 #include "ui/dialogs/multi_select.hpp"
 #include "ui/theme/theme.hpp"
+#include "ui/widgets/glass_dialog.hpp"
 #include "ui/widgets/top_bar.hpp"
 
 #include "wnk/ui/forms.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <iterator>
 #include <set>
 
@@ -77,6 +81,41 @@ constexpr ProxyCountry kProxyCountries[] = {
     {"United Arab Emirates", "ae"}, {"United Kingdom", "gb"}, {"United States", "us"}, {"Uruguay", "uy"},
     {"Uzbekistan", "uz"}, {"Venezuela", "ve"}, {"Vietnam", "vn"},
 };
+const char *country_name(const std::string &code) {
+    for (const auto &c : kProxyCountries) {
+        if (code == c.code) return c.name;
+    }
+    return "?";
+}
+
+std::string rule_label(const settings::ProxyRule &r) {
+    switch (r.type) {
+        case settings::ProxyRule::Type::Free: return std::string("Free proxy · ") + country_name(r.country);
+        case settings::ProxyRule::Type::Personal: return "My proxy · " + net::proxy_label(r.url);
+        case settings::ProxyRule::Type::Off: break;
+    }
+    return "Direct";
+}
+
+// user:password for a proxy URL, each part percent-encoded (':' and '@' are separators there).
+std::string url_login(const std::string &user, const std::string &password) {
+    auto enc = [](const std::string &v) {
+        static const char *hex = "0123456789ABCDEF";
+        std::string out;
+        for (unsigned char c : v) {
+            if (std::isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
+                out += static_cast<char>(c);
+            } else {
+                out += '%';
+                out += hex[c >> 4];
+                out += hex[c & 15];
+            }
+        }
+        return out;
+    };
+    if (user.empty() && password.empty()) return {};
+    return enc(user) + (password.empty() ? "" : ":" + enc(password));
+}
 }  // namespace
 
 SettingsScreen::SettingsScreen(app::Services &s) : Screen("Settings"), s_(s) {
@@ -119,27 +158,13 @@ SettingsScreen::SettingsScreen(app::Services &s) : Screen("Settings"), s_(s) {
         c.name = "settings.dns";
     }
 
-    {
-        // Not in CloudStream: videos some services send only to viewers in their country (JioTV: HTTP
-        // 451 elsewhere) go through a free proxy there, for the chosen providers only.
-        proxy_providers_ = &list.add<ValueRow>("Proxy for providers", "", [this](Ui &ui) { choose_proxy_providers(ui); });
-        proxy_providers_->set_description("Their videos go through a free public proxy in the country below. "
-                                          "Free proxies are slow and change often, and their operators can see "
-                                          "which sites you reach");
-        proxy_providers_->name = "settings.proxy_providers";
-        std::vector<std::string> names;
-        int sel = 0;
-        const std::string cur = st->get_string(settings::kProxyCountry, "in");
-        for (size_t i = 0; i < std::size(kProxyCountries); i++) {
-            names.push_back(kProxyCountries[i].name);
-            if (cur == kProxyCountries[i].code) sel = static_cast<int>(i);
-        }
-        auto &c = list.add<Choice>("Proxy country", names, sel, [st](Ui &, int i) {
-            st->set(settings::kProxyCountry, std::string(kProxyCountries[static_cast<size_t>(i)].code));
-        });
-        c.set_description("Proxies from ProxyScrape's free list, tested before use");
-        c.name = "settings.proxy_country";
-    }
+    // Not in CloudStream: videos some services send only to viewers in their country (JioTV: HTTP 451
+    // elsewhere) go through a proxy there, per provider: a free public one or the user's own.
+    proxies_ = &list.add<ValueRow>("Proxies", "", [this](Ui &ui) { open_proxies(ui); });
+    proxies_->set_description("Per provider: send its videos through a free proxy in a chosen country, or your own "
+                              "proxy server. Free proxies are slow and change often, and their operators can see "
+                              "which sites you reach");
+    proxies_->name = "settings.proxies";
 
     section(list, "Player");
     {
@@ -255,8 +280,10 @@ void SettingsScreen::refresh() {
     media_->set_value(f.media == settings::default_media() ? "All but NSFW" : media.empty() ? "Any" : join(media, 3));
 
     {
-        const std::set<std::string> px = settings::get_set(*s_.settings, settings::kProxyProviders, {});
-        proxy_providers_->set_value(px.empty() ? "None" : join(std::vector<std::string>(px.begin(), px.end()), 3));
+        const settings::ProxyRules rules = settings::read_proxy_rules(*s_.settings);
+        if (rules.empty()) proxies_->set_value("Off");
+        else if (rules.size() == 1) proxies_->set_value(rules.begin()->first + " · " + rule_label(rules.begin()->second));
+        else proxies_->set_value(std::to_string(rules.size()) + " providers");
     }
     profiles_->set_value(s_.profiles.current().name + (s_.profiles.all().size() > 1 ? " · " + std::to_string(s_.profiles.all().size()) + " profiles" : ""));
     const std::string home = s_.settings->get_string(settings::kHomeProvider);
@@ -294,26 +321,126 @@ void SettingsScreen::choose_languages(Ui &ui) {
     });
 }
 
-void SettingsScreen::choose_proxy_providers(Ui &ui) {
-    // Every loaded provider, plus any chosen earlier whose plugin is not loaded now (kept).
+void SettingsScreen::open_proxies(Ui &ui, const std::string &focus) {
+    // Every loaded provider, plus any with a rule whose plugin is not loaded now (kept).
     std::vector<std::string> names;
     for (const auto &p : s_.plugins->providers()) {
         if (std::find(names.begin(), names.end(), p.name) == names.end()) names.push_back(p.name);
     }
-    const std::set<std::string> cur = settings::get_set(*s_.settings, settings::kProxyProviders, {});
-    for (const auto &n : cur) {
-        if (std::find(names.begin(), names.end(), n) == names.end()) names.push_back(n);
+    const settings::ProxyRules rules = settings::read_proxy_rules(*s_.settings);
+    for (const auto &[name, r] : rules) {
+        if (std::find(names.begin(), names.end(), name) == names.end()) names.push_back(name);
     }
-    std::set<size_t> checked;
-    for (size_t i = 0; i < names.size(); i++) {
-        if (cur.count(names[i])) checked.insert(i);
+    auto d = std::make_unique<GlassDialog>("Proxies", "Choose a provider to change how its videos are fetched.");
+    Dialog *dlg = d.get();
+    auto &scroll = d->body().add<ScrollView>();
+    scroll.set_height(Dim::fixed(names.size() > 7 ? 560.0f : std::max<size_t>(names.size(), 1) * 80.0f));
+    scroll.set_width(Dim::fixed(GlassDialog::kContentWidth));
+    auto &list = scroll.add<Column>(6);
+    View *first = nullptr, *focused = nullptr;
+    if (names.empty()) list.add<Label>("No providers are loaded.");
+    for (const auto &name : names) {
+        const auto it = rules.find(name);
+        auto &row = list.add<ValueRow>(name, it == rules.end() ? "Direct" : rule_label(it->second), [this, dlg, name](Ui &u) {
+            dlg->dismiss(u);
+            open_proxy_rule(u, name);
+        });
+        row.name = "proxies." + name;
+        if (!first) first = &row;
+        if (name == focus) focused = &row;
     }
-    show_multi_select(ui, "Proxy for providers", names, checked, [this, names](Ui &, const std::set<size_t> &sel) {
-        std::set<std::string> out;
-        for (size_t i : sel) out.insert(names[i]);
-        settings::put_set(*s_.settings, settings::kProxyProviders, out);
+    d->add_button("Done");
+    ui.show_dialog(std::move(d));
+    if (focused) ui.focus(focused);
+    else if (first) ui.focus(first);
+}
+
+void SettingsScreen::open_proxy_rule(Ui &ui, const std::string &provider) {
+    const settings::ProxyRule cur = settings::proxy_rule_for(*s_.settings, provider);
+    auto d = std::make_unique<GlassDialog>(provider, "Now: " + rule_label(cur) + ".");
+    auto apply = [this, provider](Ui &u, const settings::ProxyRule &r) {
+        settings::set_proxy_rule(*s_.settings, provider, r);
         refresh();
+        open_proxies(u, provider);
+    };
+    // Dialog buttons dismiss the dialog before their handler runs.
+    d->add_button("Direct", [apply](Ui &u) { apply(u, settings::ProxyRule{}); }).name = "proxy.direct";
+    d->add_button("Free proxy", [this, provider, cur, apply](Ui &u) {
+        std::vector<std::string> names;
+        size_t sel = 0;
+        for (size_t i = 0; i < std::size(kProxyCountries); i++) {
+            names.push_back(kProxyCountries[i].name);
+            if (cur.country == kProxyCountries[i].code) sel = i;
+        }
+        show_single_select(u, provider + ": proxy country", names, sel, [apply](Ui &v, size_t i) {
+            settings::ProxyRule r;
+            r.type = settings::ProxyRule::Type::Free;
+            r.country = kProxyCountries[i].code;
+            apply(v, r);
+        });
+    }).name = "proxy.free";
+    d->add_button("My proxy", [this, provider, cur](Ui &u) { open_personal_proxy(u, provider, cur); }).name = "proxy.mine";
+    d->add_button("Cancel", [this, provider](Ui &u) { open_proxies(u, provider); });
+    ui.show_dialog(std::move(d));
+}
+
+void SettingsScreen::open_personal_proxy(Ui &ui, const std::string &provider, const settings::ProxyRule &cur) {
+    auto d = std::make_unique<GlassDialog>(provider + ": my proxy",
+                                           "The proxy's address with its port, like socks5://1.2.3.4:1080 or "
+                                           "1.2.3.4:8080 (HTTP). Login only if it needs one.");
+    Dialog *dlg = d.get();
+    auto &addr = d->body().add<TextField>("socks5://host:port or host:port");
+    addr.set_width(Dim::fixed(800));
+    addr.name = "proxy.mine.address";
+    if (cur.type == settings::ProxyRule::Type::Personal) {
+        // The saved address without its login (the login fields start empty; leaving them empty
+        // keeps the saved login).
+        std::string scheme = cur.url.substr(0, cur.url.find("://") + 3);
+        addr.set_text(scheme + net::proxy_label(cur.url));
+    }
+    auto &user = d->body().add<TextField>("Username (optional)");
+    user.set_width(Dim::fixed(800));
+    user.name = "proxy.mine.user";
+    auto &pass = d->body().add<TextField>("Password (optional)");
+    pass.set_width(Dim::fixed(800));
+    pass.set_password(true);
+    pass.name = "proxy.mine.password";
+    TextField *a = &addr, *us = &user, *pw = &pass;
+    auto save = [this, provider, cur, a, us, pw](Ui &u) {
+        std::string typed = a->text();
+        std::string login = url_login(us->text(), pw->text());
+        if (login.empty() && cur.type == settings::ProxyRule::Type::Personal) {
+            const size_t s = cur.url.find("://"), at = cur.url.rfind('@');
+            if (s != std::string::npos && at != std::string::npos && at > s) login = cur.url.substr(s + 3, at - s - 3);
+        }
+        if (!login.empty()) {
+            const size_t s = typed.find("://");
+            typed = s == std::string::npos ? login + "@" + typed : typed.substr(0, s + 3) + login + "@" + typed.substr(s + 3);
+        }
+        std::string url, error;
+        if (!settings::normalize_proxy_url(typed, &url, &error)) {
+            u.toast(error, 4000);
+            open_personal_proxy(u, provider, cur);
+            return;
+        }
+        settings::ProxyRule r;
+        r.type = settings::ProxyRule::Type::Personal;
+        r.url = url;
+        settings::set_proxy_rule(*s_.settings, provider, r);
+        refresh();
+        u.toast("Saved: " + provider + " uses " + net::proxy_label(url), 2500);
+        open_proxies(u, provider);
+    };
+    addr.set_on_submit([us](Ui &u, const std::string &) { u.focus(us); });
+    user.set_on_submit([pw](Ui &u, const std::string &) { u.focus(pw); });
+    pass.set_on_submit([save, dlg](Ui &u, const std::string &) {
+        dlg->dismiss(u);
+        save(u);
     });
+    d->add_button("Cancel", [this, provider](Ui &u) { open_proxies(u, provider); });
+    d->add_button("Save", save).name = "proxy.mine.save";
+    ui.show_dialog(std::move(d));
+    ui.focus(a);
 }
 
 void SettingsScreen::choose_media(Ui &ui) {

@@ -40,8 +40,6 @@ inline constexpr const char *kSubtitleSize = "csweb_subtitle_size";  // percent 
 inline constexpr const char *kSubtitleBox = "csweb_subtitle_box";    // dark box instead of an outline
 inline constexpr const char *kPreferDolbyVision = "csweb_prefer_dolby_vision";  // prioritize Dolby Vision streams
 inline constexpr const char *kPreferDolbyAtmos = "csweb_prefer_dolby_atmos";    // prioritize Dolby Atmos streams
-inline constexpr const char *kProxyProviders = "csweb_proxy_providers";  // providers whose videos use the proxy
-inline constexpr const char *kProxyCountry = "csweb_proxy_country";      // the proxies' country code ("in")
 inline constexpr const char *kDns = "dns_key";  // DNS over HTTPS (SettingsGeneral), CloudStream's dns_pref_values
 
 // CloudStream's "DNS over HTTPS" choices (arrays dns_pref / dns_pref_values; 3, OpenDNS, is unused).

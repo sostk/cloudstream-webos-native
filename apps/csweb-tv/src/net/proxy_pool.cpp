@@ -78,17 +78,19 @@ ProxyPool::ProxyPool(std::shared_ptr<wnk::net::HttpTransport> transport, wnk::as
                      wnk::async::MainDispatcher &dispatcher)
     : transport_(std::move(transport)), pool_(pool), dispatcher_(dispatcher) {}
 
-std::string ProxyPool::current() const {
+std::string ProxyPool::current(const std::string &country) const {
     std::lock_guard<std::mutex> lock(mu_);
-    return working_.empty() ? std::string() : working_.front().url;
+    const auto it = countries_.find(country);
+    return it == countries_.end() || it->second.working.empty() ? std::string() : it->second.working.front().url;
 }
 
-void ProxyPool::mark_bad(const std::string &proxy) {
+void ProxyPool::mark_bad(const std::string &country, const std::string &proxy) {
     std::lock_guard<std::mutex> lock(mu_);
-    working_.erase(std::remove_if(working_.begin(), working_.end(), [&](const ProxyCandidate &c) { return c.url == proxy; }),
-                   working_.end());
-    if (std::find(bad_.begin(), bad_.end(), proxy) == bad_.end()) bad_.push_back(proxy);
-    WNK_LOGI(kCat, "proxy %s dropped; %zu tested ones left", proxy_label(proxy).c_str(), working_.size());
+    Country &c = countries_[country];
+    c.working.erase(std::remove_if(c.working.begin(), c.working.end(), [&](const ProxyCandidate &p) { return p.url == proxy; }),
+                    c.working.end());
+    if (std::find(c.bad.begin(), c.bad.end(), proxy) == c.bad.end()) c.bad.push_back(proxy);
+    WNK_LOGI(kCat, "proxy %s (%s) dropped; %zu tested ones left", proxy_label(proxy).c_str(), country.c_str(), c.working.size());
 }
 
 void ProxyPool::acquire(const std::string &country, wnk::async::CancellationToken token, wnk::async::Lifetime::Weak owner,
@@ -106,13 +108,9 @@ void ProxyPool::acquire(const std::string &country, wnk::async::CancellationToke
     };
     {
         std::lock_guard<std::mutex> lock(mu_);
-        if (country != country_) {
-            country_ = country;
-            working_.clear();
-            bad_.clear();
-        }
-        if (!working_.empty()) {
-            done(working_.front().url, {});
+        const Country &c = countries_[country];
+        if (!c.working.empty()) {
+            done(c.working.front().url, {});
             return;
         }
     }
@@ -135,9 +133,10 @@ void ProxyPool::acquire(const std::string &country, wnk::async::CancellationToke
         std::vector<ProxyCandidate> all = parse_proxy_list(res.body);
         {
             std::lock_guard<std::mutex> lock(mu_);
+            const std::vector<std::string> &bad = countries_[country].bad;
             all.erase(std::remove_if(all.begin(), all.end(),
                                      [&](const ProxyCandidate &c) {
-                                         return std::find(bad_.begin(), bad_.end(), c.url) != bad_.end();
+                                         return std::find(bad.begin(), bad.end(), c.url) != bad.end();
                                      }),
                       all.end());
         }
@@ -186,8 +185,8 @@ void ProxyPool::acquire(const std::string &country, wnk::async::CancellationToke
         std::string first;
         {
             std::lock_guard<std::mutex> lock(mu_);
-            working_ = good;
-            first = working_.front().url;
+            countries_[country].working = good;
+            first = good.front().url;
         }
         WNK_LOGI(kCat, "using %s (%s, %d ms)", proxy_label(first).c_str(), good.front().isp.c_str(), good.front().latency_ms);
         done(first, {});

@@ -5,11 +5,12 @@
 // free list (https://github.com/proxyscrape/free-proxy-list, MIT; one file per country, refreshed
 // every 5 minutes), are tested before use, and a proxy that fails is dropped for the next one.
 // Free proxies are run by strangers: they see which hosts are reached (not HTTPS content). Only the
-// player's requests for the chosen providers go through them. Proxy addresses are never logged with
+// player's requests for the chosen providers go through them (settings/proxy_rules). Proxy addresses are never logged with
 // credentials (the list has none).
 #pragma once
 
 #include <functional>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -63,17 +64,19 @@ class ProxyPool {
                  std::function<void(const std::string &)> on_status,
                  std::function<void(const std::string &, const std::string &)> on_done);
     // `proxy` failed (no answer, refused, still blocked): the next tested one is used from now on.
-    void mark_bad(const std::string &proxy);
-    std::string current() const;
+    void mark_bad(const std::string &country, const std::string &proxy);
+    std::string current(const std::string &country) const;
 
  private:
     std::shared_ptr<wnk::net::HttpTransport> transport_;
     wnk::async::WorkerPool &pool_;
     wnk::async::MainDispatcher &dispatcher_;
     mutable std::mutex mu_;
-    std::string country_;
-    std::vector<ProxyCandidate> working_;  // tested, fastest first
-    std::vector<std::string> bad_;         // failed this session
+    struct Country {
+        std::vector<ProxyCandidate> working;  // tested, fastest first
+        std::vector<std::string> bad;         // failed this session
+    };
+    std::map<std::string, Country> countries_;  // by country code
 };
 
 }  // namespace csweb::net

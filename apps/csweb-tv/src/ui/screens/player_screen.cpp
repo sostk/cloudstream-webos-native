@@ -7,6 +7,7 @@
 #include "player/link_priority.hpp"
 #include "player/media_factory.hpp"
 #include "settings/preferences.hpp"
+#include "settings/proxy_rules.hpp"
 #include "ui/theme/theme.hpp"
 #include "ui/widgets/glass_dialog.hpp"
 #include "ui/widgets/pill_button.hpp"
@@ -347,23 +348,28 @@ void PlayerScreen::begin_torrent(Ui &ui, size_t index) {
         });
 }
 
-bool PlayerScreen::uses_proxy(const runtime::Link &link) const {
-    if (!s_.proxy || link.url.rfind("http://127.0.0.1", 0) == 0) return false;  // a local torrent stream
-    return settings::get_set(*s_.settings, settings::kProxyProviders, {}).count(target_.provider) > 0;
+settings::ProxyRule PlayerScreen::proxy_rule(const runtime::Link &link) const {
+    if (link.url.rfind("http://127.0.0.1", 0) == 0) return {};  // a local torrent stream
+    return settings::proxy_rule_for(*s_.settings, target_.provider);
 }
 
 void PlayerScreen::start_link(Ui &ui, const runtime::Link &link) {
-    if (!uses_proxy(link)) {
-        open_link(ui, link, {});
+    const settings::ProxyRule rule = proxy_rule(link);
+    if (rule.type == settings::ProxyRule::Type::Personal) {
+        open_link(ui, link, rule.url, {});
         return;
     }
-    const std::string country = s_.settings->get_string(settings::kProxyCountry, "in");
-    const std::string ready = s_.proxy->current();
+    if (rule.type != settings::ProxyRule::Type::Free || !s_.proxy) {
+        open_link(ui, link, {}, {});
+        return;
+    }
+    const std::string country = rule.country;
+    const std::string ready = s_.proxy->current(country);
     if (!ready.empty()) {
-        open_link(ui, link, ready);
+        open_link(ui, link, ready, country);
         return;
     }
-    // Settings → Network → Proxy: this provider's videos go through a proxy; find one first.
+    // Settings → Network → Proxies: this provider's videos go through a free proxy; find one first.
     loading_view_->set_visible(true);
     loading_text_->set_text("Finding a proxy…");
     bar_->set_visible(true);
@@ -376,7 +382,7 @@ void PlayerScreen::start_link(Ui &ui, const runtime::Link &link) {
         [this, index](const std::string &status) {
             if (current_ == index) loading_text_->set_text(status);
         },
-        [this, index, link](const std::string &proxy, const std::string &error) {
+        [this, index, link, country](const std::string &proxy, const std::string &error) {
             Ui *u = this->ui();
             if (current_ != index || !u) return;
             if (proxy.empty()) {
@@ -386,12 +392,13 @@ void PlayerScreen::start_link(Ui &ui, const runtime::Link &link) {
                 next_mirror(*u);
                 return;
             }
-            open_link(*u, link, proxy);
+            open_link(*u, link, proxy, country);
         });
 }
 
-void PlayerScreen::open_link(Ui &ui, const runtime::Link &link, const std::string &proxy) {
+void PlayerScreen::open_link(Ui &ui, const runtime::Link &link, const std::string &proxy, const std::string &country) {
     proxy_in_use_ = proxy;
+    proxy_country_ = country;
     torrent_hash_.clear();
     torrent_info_->set_visible(false);
     WNK_LOGI(kCat, "playing link %zu: %s %s (%s)", current_, link.name.c_str(), runtime::quality_label(link.quality).c_str(),
@@ -403,7 +410,8 @@ void PlayerScreen::open_link(Ui &ui, const runtime::Link &link, const std::strin
     ui.set_clear_color(wnk::render::kTransparent);
     std::shared_ptr<wnk::net::HttpTransport> http = s_.player_http ? s_.player_http : s_.ctx->http();
     if (!proxy.empty()) {
-        WNK_LOGI(kCat, "link %zu through proxy %s", current_, net::proxy_label(proxy).c_str());
+        WNK_LOGI(kCat, "link %zu through %s proxy %s", current_, country.empty() ? "a personal" : country.c_str(),
+                 net::proxy_label(proxy).c_str());
         http = std::make_shared<net::ProxiedTransport>(http, proxy);
     }
     controller_ = std::make_unique<PlaybackController>(player::make_source(link, http, s_.device,
@@ -444,11 +452,11 @@ void PlayerScreen::open_link(Ui &ui, const runtime::Link &link, const std::strin
         } else if (to == PlayState::Error && player::decoder_still_held(snap.error)) {
             // Not this link's fault, and no other link can get the decoder either (issue #15).
             held_pending_ = true;
-        } else if (to == PlayState::Error && !proxy_in_use_.empty() && proxy_retries_ < kMaxProxyRetries &&
-                   playback_start_ms_ == 0) {
-            // Through a proxy and it never played: most likely the proxy (dead, slow, still blocked).
-            // The same link again through the next one, from update().
-            s_.proxy->mark_bad(proxy_in_use_);
+        } else if (to == PlayState::Error && !proxy_in_use_.empty() && !proxy_country_.empty() &&
+                   proxy_retries_ < kMaxProxyRetries && playback_start_ms_ == 0) {
+            // Through a free proxy and it never played: most likely the proxy (dead, slow, still
+            // blocked). The same link again through the next one, from update().
+            s_.proxy->mark_bad(proxy_country_, proxy_in_use_);
             proxy_retries_++;
             retry_pending_ = true;
             if (Ui *u = this->ui()) u->toast("Proxy failed; trying another (" + std::to_string(proxy_retries_) + ")", 2500);
@@ -457,7 +465,9 @@ void PlayerScreen::open_link(Ui &ui, const runtime::Link &link, const std::strin
             // its own callback.
             errored_.insert(current_);
             next_pending_ = true;
-            if (Ui *u = this->ui()) u->toast("This link failed: " + (error.empty() ? std::string("playback error") : error), 3500);
+            const std::string why = error.empty() ? std::string("playback error") : error;
+            const bool personal = !proxy_in_use_.empty() && proxy_country_.empty();
+            if (Ui *u = this->ui()) u->toast((personal ? "This link failed through your proxy: " : "This link failed: ") + why, 3500);
         }
         show_controls();
     }));

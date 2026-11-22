@@ -20,6 +20,7 @@
 #include "app/router.hpp"
 #include "player/link_priority.hpp"
 #include "player/subtitle_file.hpp"
+#include "settings/proxy_rules.hpp"
 #include "runtime/runtime_types.hpp"
 #include "ui/widgets/quality_badge.hpp"
 
@@ -64,10 +65,11 @@ class PlayerScreen : public wnk::ui::Screen {
     void start_link(wnk::ui::Ui &ui, const runtime::Link &link);
     // A torrent or magnet link: through the torrent server first (Torrent.kt transformLink).
     void begin_torrent(wnk::ui::Ui &ui, size_t index);
-    // Settings → Network → Proxy: whether this provider's videos go through the proxy.
-    bool uses_proxy(const runtime::Link &link) const;
-    // Opens `link` in a new player, through `proxy` when not empty.
-    void open_link(wnk::ui::Ui &ui, const runtime::Link &link, const std::string &proxy);
+    // Settings → Network → Proxies: this provider's rule (Off for a local torrent stream).
+    settings::ProxyRule proxy_rule(const runtime::Link &link) const;
+    // Opens `link` in a new player, through `proxy` when not empty: a free one of `country`, or the
+    // user's own when `country` is empty.
+    void open_link(wnk::ui::Ui &ui, const runtime::Link &link, const std::string &proxy, const std::string &country);
     void poll_torrent(wnk::ui::Ui &ui);  // the torrent's seeds, peers and speed on the control bar
     void next_mirror(wnk::ui::Ui &ui);
     void no_links(const std::string &why, bool link_hints = true);
@@ -110,7 +112,8 @@ class PlayerScreen : public wnk::ui::Screen {
     bool next_pending_ = false;  // the playing link failed: try the next one
     bool retry_pending_ = false;  // the link failed through a proxy: again through the next proxy
     static constexpr int kMaxProxyRetries = 4;
-    std::string proxy_in_use_;  // the playing link's proxy ("" direct)
+    std::string proxy_in_use_;   // the playing link's proxy ("" direct)
+    std::string proxy_country_;  // its country for a free proxy, "" for the user's own
     size_t proxy_retry_index_ = static_cast<size_t>(-1);
     int proxy_retries_ = 0;
     wnk::async::CancellationSource proxy_cancel_;  // a proxy being found

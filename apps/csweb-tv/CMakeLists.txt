@@ -60,6 +60,7 @@ add_library(csweb_core STATIC
         src/profiles/profiles.cpp
         src/settings/preferences.cpp
         src/runtime/network_settings.cpp
+        src/settings/proxy_rules.cpp
         src/settings/settings_store.cpp
         src/runtime/episode_groups.cpp
         src/runtime/provider_test.cpp
@@ -78,7 +79,7 @@ endif ()
 
 # ---- tests (host) -----------------------------------------------------------------------------------
 if (WNK_BUILD_TESTS)
-    foreach (t sha256 zip_check repository runtime_types plugin_store runtime_client episode_groups redact deep_link library dir_snapshot preferences provider_test profiles http_url scrub suggestions settings_support load_hints dialog_image torrent proxy_pool)
+    foreach (t sha256 zip_check repository runtime_types plugin_store runtime_client episode_groups redact deep_link library dir_snapshot preferences provider_test profiles http_url scrub suggestions settings_support load_hints dialog_image torrent proxy_pool proxy_rules)
         add_executable(csweb_test_${t} tests/test_${t}.cpp)
         target_include_directories(csweb_test_${t} PRIVATE "${PROJECT_SOURCE_DIR}/tests/unit")
         target_compile_definitions(csweb_test_${t} PRIVATE CSWEB_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
