@@ -11,6 +11,8 @@
 #include "wnk/ui/forms.hpp"
 
 #include <algorithm>
+#include <iterator>
+#include <set>
 
 #ifndef CSWEB_VERSION
 #define CSWEB_VERSION "dev"
@@ -51,6 +53,15 @@ int seek_index(long long seconds) {
     return 1;
 }
 constexpr int kSubtitleSizes[] = {75, 100, 125, 150, 175, 200};
+
+// Proxy countries (ProxyScrape's per-country lists).
+struct ProxyCountry {
+    const char *name, *code;
+};
+constexpr ProxyCountry kProxyCountries[] = {
+    {"India", "in"}, {"United States", "us"}, {"United Kingdom", "gb"}, {"Germany", "de"}, {"France", "fr"},
+    {"Japan", "jp"}, {"Brazil", "br"}, {"Indonesia", "id"}, {"Singapore", "sg"}, {"Canada", "ca"},
+};
 }  // namespace
 
 SettingsScreen::SettingsScreen(app::Services &s) : Screen("Settings"), s_(s) {
@@ -91,6 +102,28 @@ SettingsScreen::SettingsScreen(app::Services &s) : Screen("Settings"), s_(s) {
                                    });
         c.set_description("Useful for bypassing ISP blocks. Applies to plugins' requests");
         c.name = "settings.dns";
+    }
+
+    {
+        // Not in CloudStream: videos some services send only to viewers in their country (JioTV: HTTP
+        // 451 elsewhere) go through a free proxy there, for the chosen providers only.
+        proxy_providers_ = &list.add<ValueRow>("Proxy for providers", "", [this](Ui &ui) { choose_proxy_providers(ui); });
+        proxy_providers_->set_description("Their videos go through a free public proxy in the country below. "
+                                          "Free proxies are slow and change often, and their operators can see "
+                                          "which sites you reach");
+        proxy_providers_->name = "settings.proxy_providers";
+        std::vector<std::string> names;
+        int sel = 0;
+        const std::string cur = st->get_string(settings::kProxyCountry, "in");
+        for (size_t i = 0; i < std::size(kProxyCountries); i++) {
+            names.push_back(kProxyCountries[i].name);
+            if (cur == kProxyCountries[i].code) sel = static_cast<int>(i);
+        }
+        auto &c = list.add<Choice>("Proxy country", names, sel, [st](Ui &, int i) {
+            st->set(settings::kProxyCountry, std::string(kProxyCountries[static_cast<size_t>(i)].code));
+        });
+        c.set_description("Proxies from ProxyScrape's free list, tested before use");
+        c.name = "settings.proxy_country";
     }
 
     section(list, "Player");
@@ -206,6 +239,10 @@ void SettingsScreen::refresh() {
     }
     media_->set_value(f.media == settings::default_media() ? "All but NSFW" : media.empty() ? "Any" : join(media, 3));
 
+    {
+        const std::set<std::string> px = settings::get_set(*s_.settings, settings::kProxyProviders, {});
+        proxy_providers_->set_value(px.empty() ? "None" : join(std::vector<std::string>(px.begin(), px.end()), 3));
+    }
     profiles_->set_value(s_.profiles.current().name + (s_.profiles.all().size() > 1 ? " · " + std::to_string(s_.profiles.all().size()) + " profiles" : ""));
     const std::string home = s_.settings->get_string(settings::kHomeProvider);
     home_->set_text("Home source: " + (home.empty() ? std::string("none chosen") : home) + " (change it on Home)");
@@ -238,6 +275,28 @@ void SettingsScreen::choose_languages(Ui &ui) {
         std::set<std::string> out;
         for (size_t i : sel) out.insert(tags[i]);
         settings::put_set(*s_.settings, settings::kProviderLangs, out);
+        refresh();
+    });
+}
+
+void SettingsScreen::choose_proxy_providers(Ui &ui) {
+    // Every loaded provider, plus any chosen earlier whose plugin is not loaded now (kept).
+    std::vector<std::string> names;
+    for (const auto &p : s_.plugins->providers()) {
+        if (std::find(names.begin(), names.end(), p.name) == names.end()) names.push_back(p.name);
+    }
+    const std::set<std::string> cur = settings::get_set(*s_.settings, settings::kProxyProviders, {});
+    for (const auto &n : cur) {
+        if (std::find(names.begin(), names.end(), n) == names.end()) names.push_back(n);
+    }
+    std::set<size_t> checked;
+    for (size_t i = 0; i < names.size(); i++) {
+        if (cur.count(names[i])) checked.insert(i);
+    }
+    show_multi_select(ui, "Proxy for providers", names, checked, [this, names](Ui &, const std::set<size_t> &sel) {
+        std::set<std::string> out;
+        for (size_t i : sel) out.insert(names[i]);
+        settings::put_set(*s_.settings, settings::kProxyProviders, out);
         refresh();
     });
 }

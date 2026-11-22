@@ -277,6 +277,7 @@ void PlayerScreen::no_links(const std::string &why, bool link_hints) {
 
 void PlayerScreen::stop_playback() {
     torrent_cancel_.cancel();
+    proxy_cancel_.cancel();
     if (controller_) {
         controller_->stop();
         controller_.reset();
@@ -289,6 +290,10 @@ void PlayerScreen::stop_playback() {
 
 void PlayerScreen::play_link(Ui &ui, size_t index) {
     stop_playback();
+    if (index != proxy_retry_index_) {
+        proxy_retry_index_ = index;
+        proxy_retries_ = 0;
+    }
     current_ = index;
     playback_start_ms_ = 0;
     populate_quality_badges(links_[index], nullptr);
@@ -342,7 +347,51 @@ void PlayerScreen::begin_torrent(Ui &ui, size_t index) {
         });
 }
 
+bool PlayerScreen::uses_proxy(const runtime::Link &link) const {
+    if (!s_.proxy || link.url.rfind("http://127.0.0.1", 0) == 0) return false;  // a local torrent stream
+    return settings::get_set(*s_.settings, settings::kProxyProviders, {}).count(target_.provider) > 0;
+}
+
 void PlayerScreen::start_link(Ui &ui, const runtime::Link &link) {
+    if (!uses_proxy(link)) {
+        open_link(ui, link, {});
+        return;
+    }
+    const std::string country = s_.settings->get_string(settings::kProxyCountry, "in");
+    const std::string ready = s_.proxy->current();
+    if (!ready.empty()) {
+        open_link(ui, link, ready);
+        return;
+    }
+    // Settings → Network → Proxy: this provider's videos go through a proxy; find one first.
+    loading_view_->set_visible(true);
+    loading_text_->set_text("Finding a proxy…");
+    bar_->set_visible(true);
+    source_->set_text(link_label(link));
+    proxy_cancel_.cancel();
+    proxy_cancel_ = wnk::async::CancellationSource();
+    const size_t index = current_;
+    s_.proxy->acquire(
+        country, proxy_cancel_.token(), life_.weak(),
+        [this, index](const std::string &status) {
+            if (current_ == index) loading_text_->set_text(status);
+        },
+        [this, index, link](const std::string &proxy, const std::string &error) {
+            Ui *u = this->ui();
+            if (current_ != index || !u) return;
+            if (proxy.empty()) {
+                WNK_LOGW(kCat, "proxy: %s", error.c_str());
+                errored_.insert(index);
+                u->toast("No working proxy: " + error, 4000);
+                next_mirror(*u);
+                return;
+            }
+            open_link(*u, link, proxy);
+        });
+}
+
+void PlayerScreen::open_link(Ui &ui, const runtime::Link &link, const std::string &proxy) {
+    proxy_in_use_ = proxy;
     torrent_hash_.clear();
     torrent_info_->set_visible(false);
     WNK_LOGI(kCat, "playing link %zu: %s %s (%s)", current_, link.name.c_str(), runtime::quality_label(link.quality).c_str(),
@@ -352,7 +401,11 @@ void PlayerScreen::start_link(Ui &ui, const runtime::Link &link) {
     bar_->set_visible(true);
     source_->set_text(link_label(link));
     ui.set_clear_color(wnk::render::kTransparent);
-    auto http = s_.player_http ? s_.player_http : s_.ctx->http();
+    std::shared_ptr<wnk::net::HttpTransport> http = s_.player_http ? s_.player_http : s_.ctx->http();
+    if (!proxy.empty()) {
+        WNK_LOGI(kCat, "link %zu through proxy %s", current_, net::proxy_label(proxy).c_str());
+        http = std::make_shared<net::ProxiedTransport>(http, proxy);
+    }
     controller_ = std::make_unique<PlaybackController>(player::make_source(link, http, s_.device,
                                                                            settings::preferred_max_height(*s_.settings)),
                                                        player::make_backend(s_.device),
@@ -391,6 +444,14 @@ void PlayerScreen::start_link(Ui &ui, const runtime::Link &link) {
         } else if (to == PlayState::Error && player::decoder_still_held(snap.error)) {
             // Not this link's fault, and no other link can get the decoder either (issue #15).
             held_pending_ = true;
+        } else if (to == PlayState::Error && !proxy_in_use_.empty() && proxy_retries_ < kMaxProxyRetries &&
+                   playback_start_ms_ == 0) {
+            // Through a proxy and it never played: most likely the proxy (dead, slow, still blocked).
+            // The same link again through the next one, from update().
+            s_.proxy->mark_bad(proxy_in_use_);
+            proxy_retries_++;
+            retry_pending_ = true;
+            if (Ui *u = this->ui()) u->toast("Proxy failed; trying another (" + std::to_string(proxy_retries_) + ")", 2500);
         } else if (to == PlayState::Error) {
             // The next link is opened from update(): this controller must not be destroyed inside
             // its own callback.
@@ -573,6 +634,10 @@ void PlayerScreen::update(Ui &ui, float dt) {
     if (next_pending_) {
         next_pending_ = false;
         next_mirror(ui);
+    }
+    if (retry_pending_) {
+        retry_pending_ = false;
+        if (current_ < links_.size()) play_link(ui, current_);
     }
     if (ended_pending_) {
         ended_pending_ = false;

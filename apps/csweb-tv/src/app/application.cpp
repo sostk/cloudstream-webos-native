@@ -118,6 +118,8 @@ void Application::on_start(wnk::app::Context &ctx) {
         torrent_ = std::make_unique<torrent::TorrentService>(app_dir + "/torrserver/torrserver", tmp + "/torrserver",
                                                              transport, ctx.pool(), ctx.dispatcher());
         services_.torrent = torrent_.get();
+        proxy_ = std::make_unique<net::ProxyPool>(transport, ctx.pool(), ctx.dispatcher());
+        services_.proxy = proxy_.get();
     }
 
     plugins::PluginManager::Deps deps;

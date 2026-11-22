@@ -64,6 +64,10 @@ class PlayerScreen : public wnk::ui::Screen {
     void start_link(wnk::ui::Ui &ui, const runtime::Link &link);
     // A torrent or magnet link: through the torrent server first (Torrent.kt transformLink).
     void begin_torrent(wnk::ui::Ui &ui, size_t index);
+    // Settings → Network → Proxy: whether this provider's videos go through the proxy.
+    bool uses_proxy(const runtime::Link &link) const;
+    // Opens `link` in a new player, through `proxy` when not empty.
+    void open_link(wnk::ui::Ui &ui, const runtime::Link &link, const std::string &proxy);
     void poll_torrent(wnk::ui::Ui &ui);  // the torrent's seeds, peers and speed on the control bar
     void next_mirror(wnk::ui::Ui &ui);
     void no_links(const std::string &why, bool link_hints = true);
@@ -104,6 +108,12 @@ class PlayerScreen : public wnk::ui::Screen {
     int64_t position_us_ = wnk::media::kNoTime;
     bool resume_on_return_ = false;
     bool next_pending_ = false;  // the playing link failed: try the next one
+    bool retry_pending_ = false;  // the link failed through a proxy: again through the next proxy
+    static constexpr int kMaxProxyRetries = 4;
+    std::string proxy_in_use_;  // the playing link's proxy ("" direct)
+    size_t proxy_retry_index_ = static_cast<size_t>(-1);
+    int proxy_retries_ = 0;
+    wnk::async::CancellationSource proxy_cancel_;  // a proxy being found
     bool held_pending_ = false;  // the decoder is still held by an earlier player: stop trying links
     bool ended_pending_ = false;  // the episode ended: play the next one
     bool resumed_ = false;        // the saved position was applied

@@ -37,6 +37,7 @@ class Application : public wnk::app::Delegate {
     std::unique_ptr<library::LibraryStore> library_;
     std::unique_ptr<runtime::RuntimeClient> runtime_;
     std::unique_ptr<torrent::TorrentService> torrent_;
+    std::unique_ptr<net::ProxyPool> proxy_;
     std::unique_ptr<plugins::PluginManager> plugins_;
     std::unique_ptr<plugins::PluginDataStore> plugin_data_;
     std::unique_ptr<wnk::net::HttpClient> http_;

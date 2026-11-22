@@ -32,9 +32,10 @@ class SettingsScreen : public wnk::ui::Screen {
     void refresh();
     void choose_languages(wnk::ui::Ui &ui);
     void choose_media(wnk::ui::Ui &ui);
+    void choose_proxy_providers(wnk::ui::Ui &ui);
     app::Services &s_;
     wnk::ui::Label *runtime_ = nullptr, *home_ = nullptr;
-    wnk::ui::ValueRow *langs_ = nullptr, *media_ = nullptr, *profiles_ = nullptr;
+    wnk::ui::ValueRow *langs_ = nullptr, *media_ = nullptr, *profiles_ = nullptr, *proxy_providers_ = nullptr;
     wnk::ui::View *first_ = nullptr;
     bool shown_ = false;
     core::Signal::Subscription sub_;
