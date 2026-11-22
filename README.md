@@ -32,10 +32,11 @@ Please [report both successful and unsuccessful device tests](https://github.com
 - Extension repository management, plugin installation, updates, removal and supported settings dialogs.
 - Provider home pages, search, details, episodes and stream-link extraction.
 - Native playback with source selection, subtitles, audio tracks, resume and next-episode support.
+- Torrent and magnet links, streamed through a bundled TorrServer as CloudStream does.
 - Local profiles, bookmarks, watch history and preferences.
 
 Not every CloudStream feature is available. Known limits include extensions requiring WebView or
-Android-specific screens, torrent/magnet playback, Widevine/PlayReady, video downloads, and online
+Android-specific screens, Widevine/PlayReady, video downloads, and online
 account synchronization. A provider may load successfully while search, extraction or playback fails.
 See [app behavior and differences](apps/csweb-tv/README.md#behaviour-and-cloudstream).
 
@@ -117,6 +118,7 @@ see [release.yml](.github/workflows/release.yml).
 | wolfSSL / wolfSSL JNI, CA trust store | Runtime HTTPS |
 | Firmware libcurl (main), bundled curl + mbedTLS (legacy) | Native app HTTP/HTTPS |
 | webOS DB8 | Persistent app and plugin storage |
+| [TorrServer](https://github.com/YouROK/TorrServer) (GPL-3.0) | Torrent and magnet links: streams the chosen file to the player over local HTTP |
 
 Main runtime inputs and checksums are in [runtime/inputs.lock](runtime/inputs.lock);
 [runtime/build.sh](runtime/build.sh) pins the Java build dependencies.
@@ -196,6 +198,19 @@ Use the default pinned build for testing; `--latest` intentionally uses changing
 If you already have a `runtime-aarch64` artifact from the **same source revision**, you can extract
 its outer ZIP, then unpack `runtime-aarch64.tar` into `runtime/dist/` instead. Check that
 `runtime/dist/runtime-aarch64/lib/ld-musl-aarch64.so.1` exists before packaging.
+
+### 3b. Build TorrServer
+
+Torrent and magnet links play through TorrServer, built from a pinned upstream commit in a Go container
+and packed with UPX:
+
+```sh
+cd "$CSWEB_SRC"
+tools/build-torrserver.sh    # build/torrserver/torrserver-arm64, -armv7, LICENSE, SOURCE.txt
+```
+
+The package then carries it as `torrserver/` (a private runtime). Without it the package builds, and
+torrent links fail with a message. Install with `--private-runtime torrserver` as well.
 
 ### 4. Install the webOS NDK
 
@@ -311,6 +326,7 @@ Project code is **GPL-3.0-or-later**, as identified in its source headers. The N
 CloudStream API and runtime components retain their own licences and notices.
 Packages carry app/kit notices under `licenses/` and runtime notices under
 `runtime-aarch64/licenses/` or `runtime-armv7/licenses/`; legacy curl notices are separate.
+TorrServer (GPL-3.0) carries its licence and the exact upstream source commit in `torrserver/`.
 See [runtime notices](runtime/licenses/NOTICES.md) and the
 [kit's licensing documentation](https://github.com/Native-Webos/webos-native-app-kit/blob/5b07b2df724e414b9efed9c46ed18df6e4f647b3/LICENSING.md).
 Redistributors must preserve notices and meet the source obligations of the components they ship.
