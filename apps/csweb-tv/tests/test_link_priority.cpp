@@ -101,8 +101,11 @@ TEST("sort_with_dolby_preferences") {
 
 TEST("playable") {
     CHECK(playable(link("a", 720)));
-    CHECK(!playable(link("t", 720, "TORRENT")));
-    CHECK(!playable(link("m", 720, "MAGNET", "magnet:?xt=urn")));
+    // Torrents and magnets play through the torrent server.
+    CHECK(playable(link("t", 720, "TORRENT")));
+    CHECK(playable(link("m", 720, "MAGNET", "magnet:?xt=urn")));
+    CHECK(is_torrent(link("m", 720, "MAGNET", "magnet:?xt=urn")));
+    CHECK(!is_torrent(link("v", 720, "VIDEO")));
     CHECK(!playable(link("f", 720, "VIDEO", "file:///etc/passwd")));
     CHECK(playable(link("h", 720, "M3U8", "HTTPS://h/x.m3u8")));
 }

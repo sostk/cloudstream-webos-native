@@ -51,10 +51,12 @@ VideoQualityInfo detect_quality_info(const runtime::Link &link,
                                    bool stream_atmos = false);
 
 int link_priority(const runtime::Link &link, const LinkPreferences &prefs = {});
-// Torrents and magnets need CloudStream's torrent server, which the app does not have; anything
-// that is not http(s) cannot be opened either. DRM links play only with ClearKey (keys in the clear):
+// Torrents and magnets play through the torrent server (torrent/torrent_service), as CloudStream's
+// Torrent.kt does; anything else that is not http(s) cannot be opened. DRM links play only with ClearKey (keys in the clear):
 // Widevine and PlayReady need licences for the TV's own protected DRM, which an app cannot use.
 bool playable(const runtime::Link &link);
+// TORRENT / MAGNET links: played through the torrent server.
+bool is_torrent(const runtime::Link &link);
 // Why a link cannot play ("" when it can), for the sources list.
 std::string unsupported_reason(const runtime::Link &link);
 // Indices into `links`, best first.

@@ -267,13 +267,13 @@ void PlayerScreen::no_links(const std::string &why, bool link_hints) {
     if (!link_hints) {
         loading_text_->set_text(why + ".");
     } else {
-        loading_text_->set_text(why + (load_error_.empty() ? std::string() : " (" + load_error_ + ")") +
-                                (links_.empty() ? "" : ". Torrent links cannot be played on the TV."));
+        loading_text_->set_text(why + (load_error_.empty() ? std::string() : " (" + load_error_ + ")") + ".");
     }
     if (Ui *u = this->ui()) u->set_clear_color(std::nullopt);
 }
 
 void PlayerScreen::stop_playback() {
+    torrent_cancel_.cancel();
     if (controller_) {
         controller_->stop();
         controller_.reset();
@@ -289,8 +289,64 @@ void PlayerScreen::play_link(Ui &ui, size_t index) {
     current_ = index;
     playback_start_ms_ = 0;
     populate_quality_badges(links_[index], nullptr);
+    if (player::is_torrent(links_[index])) {
+        begin_torrent(ui, index);
+        return;
+    }
+    start_link(ui, links_[index]);
+}
+
+void PlayerScreen::begin_torrent(Ui &ui, size_t index) {
     const runtime::Link &link = links_[index];
-    WNK_LOGI(kCat, "playing link %zu: %s %s (%s)", index, link.name.c_str(), runtime::quality_label(link.quality).c_str(),
+    WNK_LOGI(kCat, "playing link %zu: %s (torrent)", index, link.name.c_str());
+    loading_view_->set_visible(true);
+    loading_text_->set_text("Starting the torrent…");
+    bar_->set_visible(true);
+    source_->set_text(link_label(link));
+    if (!s_.torrent) {
+        errored_.insert(index);
+        ui.toast("Torrents cannot be played here.", 3500);
+        next_mirror(ui);
+        return;
+    }
+    torrent_cancel_.cancel();
+    torrent_cancel_ = wnk::async::CancellationSource();
+    s_.torrent->resolve(
+        link.url, torrent_cancel_.token(), life_.weak(),
+        [this, index](const torrent::Progress &p) {
+            if (current_ != index) return;
+            std::string text = "Starting the torrent… ";
+            text += p.total_peers > 0 ? std::to_string(p.active_peers) + " of " + std::to_string(p.total_peers) + " peers"
+                                      : std::string("looking for peers");
+            if (p.download_bps > 1024) {
+                char speed[32];
+                std::snprintf(speed, sizeof speed, " · %.1f MB/s", p.download_bps / (1024.0 * 1024.0));
+                text += speed;
+            }
+            loading_text_->set_text(text);
+        },
+        [this, index](const torrent::Resolved &r) {
+            Ui *u = this->ui();
+            if (current_ != index || !u) return;
+            if (!r.ok) {
+                WNK_LOGW(kCat, "torrent link %zu failed: %s", index, r.error.c_str());
+                errored_.insert(index);
+                u->toast("This torrent failed: " + r.error, 3500);
+                next_mirror(*u);
+                return;
+            }
+            // Torrent.kt: the server's stream of the chosen file, played as an ordinary video link.
+            runtime::Link local = links_[index];
+            local.url = r.url;
+            local.link_type = "VIDEO";
+            local.referer.clear();
+            local.headers.clear();
+            start_link(*u, local);
+        });
+}
+
+void PlayerScreen::start_link(Ui &ui, const runtime::Link &link) {
+    WNK_LOGI(kCat, "playing link %zu: %s %s (%s)", current_, link.name.c_str(), runtime::quality_label(link.quality).c_str(),
              player::is_adaptive(link) ? "adaptive" : "ffmpeg");
     tracks_.clear();
     loading_view_->set_visible(false);

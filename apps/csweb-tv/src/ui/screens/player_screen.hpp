@@ -60,6 +60,10 @@ class PlayerScreen : public wnk::ui::Screen {
     void links_changed();
     void start_best(wnk::ui::Ui &ui);
     void play_link(wnk::ui::Ui &ui, size_t index);
+    // Opens `link` (links_[current_], or a torrent link turned into its local stream) in the player.
+    void start_link(wnk::ui::Ui &ui, const runtime::Link &link);
+    // A torrent or magnet link: through the torrent server first (Torrent.kt transformLink).
+    void begin_torrent(wnk::ui::Ui &ui, size_t index);
     void next_mirror(wnk::ui::Ui &ui);
     void no_links(const std::string &why, bool link_hints = true);
     void stop_playback();
@@ -129,6 +133,7 @@ class PlayerScreen : public wnk::ui::Screen {
     double playback_start_ms_ = 0;
     player::VideoQualityInfo detected_quality_;
     wnk::async::Lifetime life_;
+    wnk::async::CancellationSource torrent_cancel_;  // the torrent being started, if any
 };
 
 }  // namespace csweb::ui

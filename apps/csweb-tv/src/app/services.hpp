@@ -11,6 +11,7 @@
 #include "profiles/profiles.hpp"
 #include "runtime/runtime_client.hpp"
 #include "settings/settings_store.hpp"
+#include "torrent/torrent_service.hpp"
 
 #include "wnk/app/app.hpp"
 #include "wnk/media/device_caps.hpp"
@@ -23,6 +24,7 @@ class Router;
 struct Services {
     wnk::app::Context *ctx = nullptr;
     runtime::RuntimeClient *runtime = nullptr;
+    torrent::TorrentService *torrent = nullptr;  // torrent and magnet links (a bundled TorrServer)
     plugins::PluginManager *plugins = nullptr;
     plugins::PluginDataStore *plugin_data = nullptr;
     settings::SettingsStore *settings = nullptr;

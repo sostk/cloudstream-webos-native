@@ -66,7 +66,8 @@ add_library(csweb_core STATIC
         src/runtime/runtime_client.cpp
         src/runtime/runtime_launcher.cpp
         src/runtime/runtime_types.cpp
-        src/search/suggestions.cpp)
+        src/search/suggestions.cpp
+        src/torrent/torrent_service.cpp)
 target_include_directories(csweb_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_include_directories(csweb_core SYSTEM PUBLIC "${PROJECT_SOURCE_DIR}/third_party")
 target_link_libraries(csweb_core PUBLIC wnk_storage wnk_logging wnk_net wnk_async Threads::Threads)
@@ -76,7 +77,7 @@ endif ()
 
 # ---- tests (host) -----------------------------------------------------------------------------------
 if (WNK_BUILD_TESTS)
-    foreach (t sha256 zip_check repository runtime_types plugin_store runtime_client episode_groups redact deep_link library dir_snapshot preferences provider_test profiles http_url scrub suggestions settings_support load_hints dialog_image)
+    foreach (t sha256 zip_check repository runtime_types plugin_store runtime_client episode_groups redact deep_link library dir_snapshot preferences provider_test profiles http_url scrub suggestions settings_support load_hints dialog_image torrent)
         add_executable(csweb_test_${t} tests/test_${t}.cpp)
         target_include_directories(csweb_test_${t} PRIVATE "${PROJECT_SOURCE_DIR}/tests/unit")
         target_compile_definitions(csweb_test_${t} PRIVATE CSWEB_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
@@ -230,6 +231,30 @@ elseif (WNK_WEBOS)
     endif ()
     list(APPEND _csweb_bundled_libs "${_csweb_curl}/lib/libcurl.so.4")
     list(APPEND _csweb_extra_dirs "${_csweb_curl}/licenses-libcurl")
+endif ()
+
+# TorrServer for torrent and magnet links (tools/build-torrserver.sh, GPL-3.0): staged as torrserver/ in
+# the package with its licence and source note, as a private runtime (started as a separate process). Without it torrent links fail with a clear message.
+if (WNK_WEBOS)
+    set(_csweb_ts_arch arm64)
+    if (CSWEB_LEGACY)
+        set(_csweb_ts_arch armv7)
+    endif ()
+    set(_csweb_ts_bin "${_csweb_root}/build/torrserver/torrserver-${_csweb_ts_arch}")
+    if (EXISTS "${_csweb_ts_bin}")
+        set(_csweb_ts_dir "${CMAKE_CURRENT_BINARY_DIR}/torrserver-stage/torrserver")
+        file(MAKE_DIRECTORY "${_csweb_ts_dir}")
+        file(COPY_FILE "${_csweb_ts_bin}" "${_csweb_ts_dir}/torrserver" ONLY_IF_DIFFERENT)
+        file(COPY_FILE "${_csweb_root}/build/torrserver/LICENSE" "${_csweb_ts_dir}/LICENSE" ONLY_IF_DIFFERENT)
+        file(COPY_FILE "${_csweb_root}/build/torrserver/SOURCE.txt" "${_csweb_ts_dir}/SOURCE.txt" ONLY_IF_DIFFERENT)
+        file(CHMOD "${_csweb_ts_dir}/torrserver" PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ
+             GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
+        # A static binary with no DT_NEEDED: packaged and checked as a self-contained private runtime
+        # (an ARM64 or ARM executable outside the app's own ARM soft-float rules).
+        list(APPEND _csweb_runtimes "${_csweb_ts_dir}")
+    else ()
+        message(WARNING "CSWeb TV: ${_csweb_ts_bin} missing (tools/build-torrserver.sh); torrent links will not play")
+    endif ()
 endif ()
 
 wnk_add_webos_package(

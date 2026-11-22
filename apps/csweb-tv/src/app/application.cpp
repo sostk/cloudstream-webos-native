@@ -55,6 +55,7 @@ Application::Application() = default;
 Application::~Application() {
     // on_stop has taken the screens down; stop the runtime so no answer arrives for a dead manager.
     if (runtime_) runtime_->stop();
+    if (torrent_) torrent_->stop();
     if (plugin_data_) plugin_data_->save_now();
 }
 
@@ -111,6 +112,13 @@ void Application::on_start(wnk::app::Context &ctx) {
         },
         [&dispatcher](std::function<void()> fn) { dispatcher.post(std::move(fn)); });
     services_.runtime = runtime_.get();
+    // Torrents (CloudStream's Torrent.kt): TorrServer from the package, its state on tmpfs. Started on
+    // the first torrent link, not here.
+    if (auto transport = ctx.http()) {
+        torrent_ = std::make_unique<torrent::TorrentService>(app_dir + "/torrserver/torrserver", tmp + "/torrserver",
+                                                             transport, ctx.pool(), ctx.dispatcher());
+        services_.torrent = torrent_.get();
+    }
 
     plugins::PluginManager::Deps deps;
     deps.http = ctx.http();

@@ -194,7 +194,7 @@ int link_priority(const runtime::Link &link, const LinkPreferences &prefs) {
 }
 
 std::string unsupported_reason(const runtime::Link &link) {
-    if (link.link_type == "TORRENT" || link.link_type == "MAGNET") return "torrent";
+    if (is_torrent(link)) return {};  // through the torrent server (torrent/torrent_service)
     if (!starts_with_ci(link.url, "http://") && !starts_with_ci(link.url, "https://")) return "not a web address";
     if (link.drm && !link.drm->clearkey()) return std::string(runtime::drm_name(link.drm->uuid)) + " DRM";
     if (link.drm && (link.drm->kid.empty() || link.drm->key.empty()) && link.drm->license_url.empty()) return "ClearKey without a key";
@@ -202,6 +202,8 @@ std::string unsupported_reason(const runtime::Link &link) {
 }
 
 bool playable(const runtime::Link &link) { return unsupported_reason(link).empty(); }
+
+bool is_torrent(const runtime::Link &link) { return link.link_type == "TORRENT" || link.link_type == "MAGNET"; }
 
 std::vector<size_t> sort_links(const std::vector<runtime::Link> &links, const LinkPreferences &prefs) {
     std::vector<size_t> order(links.size());
